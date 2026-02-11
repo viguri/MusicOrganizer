@@ -1,0 +1,147 @@
+{
+    "House": [
+        "Afro House",
+        "Deep House",
+        "Progressive House",
+        "Tech House",
+        "Melodic House",
+        "Bass House",
+        "Future House",
+        "Jackin House",
+        "Tropical House",
+        "Funky House",
+        "Groove House"
+    ],
+    "Techno": [
+        "Techno (Peak Time Driving)",
+        "Melodic House & Techno",
+        "Techno (Raw Deep Hypnotic)",
+        "Minimal Deep Tech",
+        "Hard Techno",
+        "Acid Techno",
+        "Electro Techno"
+    ],
+    "Trance": [
+        "Trance (Main Floor)",
+        "Uplifting Trance",
+        "Psy-Trance",
+        "Progressive Trance",
+        "Hard Trance",
+        "Dream Trance"
+    ],
+    "Pop": [
+        "Pop",
+        "Electro Pop",
+        "Synth Pop",
+        "Dance Pop",
+        "Pop Rock",
+        "Top 40",
+        "Pop Latino",
+        "Pop-Folk",
+        "International Pop",
+        "Alternative Pop"
+    ],
+    "Rock": [
+        "Rock",
+        "Alternative Rock",
+        "Hard Rock",
+        "Punk Rock",
+        "Indie Rock",
+        "Soft Rock",
+        "Rock & Roll",
+        "Pop Rock",
+        "Synth Punk"
+    ],
+    "Dance": [
+        "Dance",
+        "Electro House",
+        "Nu Disco",
+        "Eurodance",
+        "Italodance",
+        "Tropical House",
+        "Hard Dance",
+        "Club Dance"
+    ],
+    "Electronic": [
+        "Electronica",
+        "Downtempo",
+        "Breakbeat",
+        "Dubstep",
+        "Electro",
+        "Chill Out",
+        "EDM",
+        "Synthwave",
+        "Complextro",
+        "Trip-Hop",
+        "Ambient",
+        "Minimal Synth"
+    ],
+    "Hip-Hop/Rap": [
+        "Hip-Hop",
+        "Rap",
+        "R&B",
+        "Trap",
+        "Future Bass",
+        "Dubstep",
+        "Grime"
+    ],
+    "Alternative": [
+        "Alternative",
+        "Indie",
+        "Alternative Rock",
+        "Indie Pop",
+        "Indie Dance",
+        "Alternative Dance"
+    ],
+    "Disco": [
+        "Disco",
+        "Nu Disco",
+        "Funky House"
+    ],
+    "Metal": [
+        "Metal",
+        "Hard Rock",
+        "Heavy Metal",
+        "Alternative Metal"
+    ],
+    "Classical": [
+        "Classical",
+        "Modern Classical",
+        "Electro-Classical"
+    ],
+    "Jazz": [
+        "Jazz",
+        "Electro-Jazz",
+        "Smooth Jazz"
+    ],
+    "Latin": [
+        "Latin",
+        "Latin Pop",
+        "Latin Rock",
+        "Reggaeton",
+        "Salsa",
+        "Merengue"
+    ],
+    "Funk/Soul": [
+        "Funk",
+        "Soul",
+        "R&B",
+        "Neo Soul"
+    ],
+    "Reggae": [
+        "Reggae",
+        "Ska",
+        "Dancehall"
+    ],
+    "World": [
+        "African Music",
+        "Asian Music",
+        "Amapiano"
+    ],
+    "Soundtracks": [
+        "Soundtrack",
+        "Film Scores",
+        "Game Scores",
+        "Movie Soundtrack"
+    ]
+}

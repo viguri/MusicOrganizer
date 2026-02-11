@@ -1,0 +1,259 @@
+"""API routes for organizing, cleaning names, and detecting duplicates."""
+
+import asyncio
+import logging
+import uuid
+from pathlib import Path
+from typing import Dict
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel
+
+from backend.api.websocket import manager
+from backend.modules.organizer import (
+    plan_organize,
+    execute_plan,
+    rollback,
+    create_folder_structure,
+    cleanup_empty_folders,
+    OrganizePlan,
+)
+from backend.modules.name_cleaner import clean_directory
+from backend.modules.duplicates import find_duplicates
+
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/organize", tags=["organize"])
+
+# In-memory task and plan tracking
+_tasks: Dict[str, Dict] = {}
+_plans: Dict[str, OrganizePlan] = {}
+
+
+class OrganizeRequest(BaseModel):
+    source: str
+    dest: str
+    dry_run: bool = True
+
+
+class CleanNamesRequest(BaseModel):
+    directory: str
+    dry_run: bool = True
+
+
+class DuplicatesRequest(BaseModel):
+    source: str
+    against: str | None = None
+
+
+class RollbackRequest(BaseModel):
+    rollback_log: str
+
+
+@router.post("/plan")
+async def api_plan_organize(request: OrganizeRequest, background_tasks: BackgroundTasks):
+    """Plan file organization (dry-run). Returns what would be moved."""
+    if not Path(request.source).is_dir():
+        raise HTTPException(status_code=400, detail=f"Source not found: {request.source}")
+    if not Path(request.dest).is_dir():
+        raise HTTPException(status_code=400, detail=f"Destination not found: {request.dest}")
+
+    task_id = str(uuid.uuid4())[:8]
+    _tasks[task_id] = {"status": "running", "type": "plan"}
+
+    background_tasks.add_task(_run_plan, task_id, request.source, request.dest)
+    return {"task_id": task_id, "status": "started"}
+
+
+@router.post("/execute/{plan_id}")
+async def api_execute_plan(plan_id: str, background_tasks: BackgroundTasks):
+    """Execute a previously planned organize operation."""
+    plan = _plans.get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found. Create a plan first with /plan")
+
+    task_id = str(uuid.uuid4())[:8]
+    _tasks[task_id] = {"status": "running", "type": "execute"}
+
+    background_tasks.add_task(_run_execute, task_id, plan)
+    return {"task_id": task_id, "status": "started", "files_to_move": plan.files_to_move}
+
+
+@router.post("/rollback")
+async def api_rollback(request: RollbackRequest):
+    """Rollback a previous organize operation."""
+    try:
+        result = rollback(request.rollback_log)
+        return result
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/clean-names")
+async def api_clean_names(request: CleanNamesRequest, background_tasks: BackgroundTasks):
+    """Clean audio file names in a directory."""
+    if not Path(request.directory).is_dir():
+        raise HTTPException(status_code=400, detail=f"Directory not found: {request.directory}")
+
+    task_id = str(uuid.uuid4())[:8]
+    _tasks[task_id] = {"status": "running", "type": "clean-names"}
+
+    background_tasks.add_task(_run_clean_names, task_id, request.directory, request.dry_run)
+    return {"task_id": task_id, "status": "started"}
+
+
+@router.post("/duplicates")
+async def api_scan_duplicates(request: DuplicatesRequest, background_tasks: BackgroundTasks):
+    """Scan for duplicate files."""
+    if not Path(request.source).is_dir():
+        raise HTTPException(status_code=400, detail=f"Source not found: {request.source}")
+    if request.against and not Path(request.against).is_dir():
+        raise HTTPException(status_code=400, detail=f"Against directory not found: {request.against}")
+
+    task_id = str(uuid.uuid4())[:8]
+    _tasks[task_id] = {"status": "running", "type": "duplicates"}
+
+    background_tasks.add_task(_run_duplicates, task_id, request.source, request.against)
+    return {"task_id": task_id, "status": "started"}
+
+
+@router.get("/task/{task_id}")
+async def get_task_status(task_id: str):
+    """Get the status of an organize task."""
+    task = _tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+
+@router.post("/create-folders")
+async def api_create_folders(dest: str):
+    """Create folder structure from folder_mapping.json."""
+    if not Path(dest).is_dir():
+        raise HTTPException(status_code=400, detail=f"Destination not found: {dest}")
+    try:
+        return create_folder_structure(dest)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/cleanup-empty")
+async def api_cleanup_empty(directory: str):
+    """Remove empty folders recursively."""
+    if not Path(directory).is_dir():
+        raise HTTPException(status_code=400, detail=f"Directory not found: {directory}")
+    try:
+        removed = cleanup_empty_folders(directory)
+        return {"removed": removed}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Background tasks ──────────────────────────────────────────────────────────
+
+async def _run_plan(task_id: str, source: str, dest: str):
+    """Background task for planning organization."""
+    loop = asyncio.get_event_loop()
+    await manager.send_status(task_id, "started", f"Planning: {source} → {dest}")
+
+    try:
+        def progress_cb(current, total):
+            asyncio.run_coroutine_threadsafe(
+                manager.send_progress(task_id, current, total, f"Scanning: {current}/{total}"),
+                loop,
+            )
+
+        plan = await loop.run_in_executor(
+            None, lambda: plan_organize(source, dest, progress_callback=progress_cb)
+        )
+
+        _plans[plan.plan_id] = plan
+        result = plan.to_dict()
+
+        _tasks[task_id] = {"status": "completed", "type": "plan", "result": result}
+        await manager.send_result(task_id, result)
+        await manager.send_status(task_id, "completed", f"Plan ready: {plan.files_to_move} files to move")
+
+    except Exception as e:
+        logger.exception(f"Plan failed: {e}")
+        _tasks[task_id] = {"status": "error", "type": "plan", "error": str(e)}
+        await manager.send_status(task_id, "error", str(e))
+
+
+async def _run_execute(task_id: str, plan: OrganizePlan):
+    """Background task for executing a plan."""
+    loop = asyncio.get_event_loop()
+    await manager.send_status(task_id, "started", f"Executing plan {plan.plan_id}...")
+
+    try:
+        def progress_cb(current, total):
+            asyncio.run_coroutine_threadsafe(
+                manager.send_progress(task_id, current, total, f"Moving: {current}/{total}"),
+                loop,
+            )
+
+        result = await loop.run_in_executor(
+            None, lambda: execute_plan(plan, progress_callback=progress_cb)
+        )
+
+        _tasks[task_id] = {"status": "completed", "type": "execute", "result": result}
+        await manager.send_result(task_id, result)
+        await manager.send_status(task_id, "completed", f"Done: {result['files_moved']} moved")
+
+    except Exception as e:
+        logger.exception(f"Execute failed: {e}")
+        _tasks[task_id] = {"status": "error", "type": "execute", "error": str(e)}
+        await manager.send_status(task_id, "error", str(e))
+
+
+async def _run_clean_names(task_id: str, directory: str, dry_run: bool):
+    """Background task for cleaning file names."""
+    loop = asyncio.get_event_loop()
+    await manager.send_status(task_id, "started", f"Cleaning names in {directory}...")
+
+    try:
+        def progress_cb(current, total):
+            asyncio.run_coroutine_threadsafe(
+                manager.send_progress(task_id, current, total, f"Cleaning: {current}/{total}"),
+                loop,
+            )
+
+        result = await loop.run_in_executor(
+            None, lambda: clean_directory(directory, dry_run=dry_run, progress_callback=progress_cb)
+        )
+
+        _tasks[task_id] = {"status": "completed", "type": "clean-names", "result": result}
+        await manager.send_result(task_id, result)
+        await manager.send_status(task_id, "completed", f"Done: {result['total_renamed']} files")
+
+    except Exception as e:
+        logger.exception(f"Clean names failed: {e}")
+        _tasks[task_id] = {"status": "error", "type": "clean-names", "error": str(e)}
+        await manager.send_status(task_id, "error", str(e))
+
+
+async def _run_duplicates(task_id: str, source: str, against: str | None):
+    """Background task for duplicate detection."""
+    loop = asyncio.get_event_loop()
+    await manager.send_status(task_id, "started", f"Scanning duplicates in {source}...")
+
+    try:
+        def progress_cb(current, total):
+            asyncio.run_coroutine_threadsafe(
+                manager.send_progress(task_id, current, total, f"Hashing: {current}/{total}"),
+                loop,
+            )
+
+        result = await loop.run_in_executor(
+            None, lambda: find_duplicates(source, against=against, progress_callback=progress_cb)
+        )
+
+        _tasks[task_id] = {"status": "completed", "type": "duplicates", "result": result}
+        await manager.send_result(task_id, result)
+        await manager.send_status(task_id, "completed", f"Done: {result['total_hash_groups']} hash groups")
+
+    except Exception as e:
+        logger.exception(f"Duplicates scan failed: {e}")
+        _tasks[task_id] = {"status": "error", "type": "duplicates", "error": str(e)}
+        await manager.send_status(task_id, "error", str(e))
