@@ -23,13 +23,14 @@ def analyze_genres(
     use_embeddings: bool = True,
     target_folders: int = TARGET_FOLDER_COUNT,
     progress_callback: Optional[Callable[[int, int], None]] = None,
+    recursive: bool = True,
 ) -> Dict:
     """Scan a directory, count genre frequencies, and propose folder structure.
 
     Returns a summary dict with genre stats and proposed folder mapping.
     """
     # Step 1: Scan all files
-    tracks = scan_directory(directory, progress_callback=progress_callback)
+    tracks = scan_directory(directory, progress_callback=progress_callback, recursive=recursive)
 
     # Step 2: Count genre frequencies
     genre_counter: Counter = Counter()

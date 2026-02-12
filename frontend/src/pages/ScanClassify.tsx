@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ScanSearch, Play, BarChart3 } from "lucide-react"
+import { ScanSearch, Play, BarChart3, FolderTree, Folder } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import FolderPicker from "@/components/FolderPicker"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,6 +29,7 @@ function TopGenresList({ genres }: { genres: Record<string, number> }) {
 
 export default function ScanClassify() {
   const [directory, setDirectory] = useState("")
+  const [recursive, setRecursive] = useState(true)
   const [scanTaskId, setScanTaskId] = useState<string | null>(null)
   const [analyzeTaskId, setAnalyzeTaskId] = useState<string | null>(null)
   const [scanResult, setScanResult] = useState<Record<string, unknown> | null>(null)
@@ -42,7 +43,7 @@ export default function ScanClassify() {
     setLoading(true)
     setScanResult(null)
     try {
-      const res = await startScan(directory.trim())
+      const res = await startScan(directory.trim(), true, recursive)
       setScanTaskId(res.task_id)
       pollTask(res.task_id, (result) => setScanResult(result))
     } catch (e) {
@@ -57,7 +58,7 @@ export default function ScanClassify() {
     setLoading(true)
     setAnalyzeResult(null)
     try {
-      const res = await analyzeGenres(directory.trim())
+      const res = await analyzeGenres(directory.trim(), true, 50, recursive)
       setAnalyzeTaskId(res.task_id)
       pollTask(res.task_id, (result) => setAnalyzeResult(result))
     } catch (e) {
@@ -96,12 +97,25 @@ export default function ScanClassify() {
 
       {/* Directory Input */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-4 space-y-3">
           <FolderPicker
             value={directory}
             onChange={setDirectory}
             placeholder="Directory path (e.g. G:\__DJ-ING\_______MASTER_COLLECTION)"
           />
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none w-fit">
+            <input
+              type="checkbox"
+              checked={recursive}
+              onChange={(e) => setRecursive(e.target.checked)}
+              className="rounded border-input"
+            />
+            {recursive ? <FolderTree className="h-4 w-4 text-muted-foreground" /> : <Folder className="h-4 w-4 text-muted-foreground" />}
+            <span>Include subdirectories</span>
+            <span className="text-xs text-muted-foreground">
+              {recursive ? "(scans all subfolders recursively)" : "(only files in the selected folder)"}
+            </span>
+          </label>
         </CardContent>
       </Card>
 

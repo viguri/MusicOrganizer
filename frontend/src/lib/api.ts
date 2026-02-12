@@ -23,16 +23,16 @@ export const getConfig = () =>
   }>("/config")
 
 // --- Scan ---
-export const startScan = (directory: string, save_to_db = true) =>
+export const startScan = (directory: string, save_to_db = true, recursive = true) =>
   request<{ task_id: string; status: string; directory: string }>("/scan/start", {
     method: "POST",
-    body: JSON.stringify({ directory, save_to_db }),
+    body: JSON.stringify({ directory, save_to_db, recursive }),
   })
 
-export const analyzeGenres = (directory: string, use_embeddings = true, target_folders = 50) =>
+export const analyzeGenres = (directory: string, use_embeddings = true, target_folders = 50, recursive = true) =>
   request<{ task_id: string; status: string }>("/scan/analyze-genres", {
     method: "POST",
-    body: JSON.stringify({ directory, use_embeddings, target_folders }),
+    body: JSON.stringify({ directory, use_embeddings, target_folders, recursive }),
   })
 
 export const getTaskStatus = (task_id: string) =>
@@ -53,10 +53,10 @@ export const getLabelMapping = () =>
   request<Record<string, string>>("/scan/label-mapping")
 
 // --- Organize ---
-export const planOrganize = (source: string, dest: string) =>
+export const planOrganize = (source: string, dest: string, recursive = true) =>
   request<{ task_id: string; status: string }>("/organize/plan", {
     method: "POST",
-    body: JSON.stringify({ source, dest, dry_run: true }),
+    body: JSON.stringify({ source, dest, dry_run: true, recursive }),
   })
 
 export const executePlan = (plan_id: string) =>

@@ -33,6 +33,7 @@ class OrganizeRequest(BaseModel):
     source: str
     dest: str
     dry_run: bool = True
+    recursive: bool = True
 
 
 class CleanNamesRequest(BaseModel):
@@ -60,7 +61,7 @@ async def api_plan_organize(request: OrganizeRequest, background_tasks: Backgrou
     task_id = str(uuid.uuid4())[:8]
     _tasks[task_id] = {"status": "running", "type": "plan"}
 
-    background_tasks.add_task(_run_plan, task_id, request.source, request.dest)
+    background_tasks.add_task(_run_plan, task_id, request.source, request.dest, request.recursive)
     return {"task_id": task_id, "status": "started"}
 
 
@@ -152,10 +153,11 @@ async def api_cleanup_empty(directory: str):
 
 # ── Background tasks ──────────────────────────────────────────────────────────
 
-async def _run_plan(task_id: str, source: str, dest: str):
+async def _run_plan(task_id: str, source: str, dest: str, recursive: bool = True):
     """Background task for planning organization."""
     loop = asyncio.get_event_loop()
-    await manager.send_status(task_id, "started", f"Planning: {source} → {dest}")
+    mode = "recursive" if recursive else "top-level only"
+    await manager.send_status(task_id, "started", f"Planning ({mode}): {source} → {dest}")
 
     try:
         def progress_cb(current, total):
@@ -165,7 +167,7 @@ async def _run_plan(task_id: str, source: str, dest: str):
             )
 
         plan = await loop.run_in_executor(
-            None, lambda: plan_organize(source, dest, progress_callback=progress_cb)
+            None, lambda: plan_organize(source, dest, recursive=recursive, progress_callback=progress_cb)
         )
 
         _plans[plan.plan_id] = plan

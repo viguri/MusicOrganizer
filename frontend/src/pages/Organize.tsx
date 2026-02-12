@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { FolderSync, Play, RotateCcw, Trash2 } from "lucide-react"
+import { FolderSync, Play, RotateCcw, Trash2, FolderTree, Folder } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import FolderPicker from "@/components/FolderPicker"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,6 +28,7 @@ interface MoveItem {
 export default function Organize() {
   const [source, setSource] = useState("")
   const [dest, setDest] = useState("")
+  const [recursive, setRecursive] = useState(true)
   const [planTaskId, setPlanTaskId] = useState<string | null>(null)
   const [execTaskId, setExecTaskId] = useState<string | null>(null)
   const [planResult, setPlanResult] = useState<Record<string, unknown> | null>(null)
@@ -59,7 +60,7 @@ export default function Organize() {
     setPlanResult(null)
     setExecResult(null)
     try {
-      const res = await planOrganize(source.trim(), dest.trim())
+      const res = await planOrganize(source.trim(), dest.trim(), recursive)
       setPlanTaskId(res.task_id)
       pollTask(res.task_id, getTaskStatus, (result) => setPlanResult(result))
     } catch (e) {
@@ -146,6 +147,19 @@ export default function Organize() {
               label="Destination (Styles)"
             />
           </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none w-fit">
+            <input
+              type="checkbox"
+              checked={recursive}
+              onChange={(e) => setRecursive(e.target.checked)}
+              className="rounded border-input"
+            />
+            {recursive ? <FolderTree className="h-4 w-4 text-muted-foreground" /> : <Folder className="h-4 w-4 text-muted-foreground" />}
+            <span>Include subdirectories in source</span>
+            <span className="text-xs text-muted-foreground">
+              {recursive ? "(scans all subfolders)" : "(only top-level files)"}
+            </span>
+          </label>
           <div className="flex gap-2">
             <Button onClick={handlePlan} disabled={loading || !source.trim() || !dest.trim() || planTask?.status === "running"}>
               <FolderSync className="h-4 w-4" />

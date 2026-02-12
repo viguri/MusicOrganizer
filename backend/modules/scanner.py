@@ -34,15 +34,28 @@ class TrackInfo:
     error: Optional[str] = None
 
 
-def discover_audio_files(directory: str) -> List[str]:
-    """Walk a directory and return all audio file paths."""
+def discover_audio_files(directory: str, recursive: bool = True) -> List[str]:
+    """Walk a directory and return all audio file paths.
+
+    Args:
+        directory: Root directory to scan
+        recursive: If True, scan subdirectories recursively. If False, only scan the top-level directory.
+    """
     files = []
-    for root, _dirs, filenames in os.walk(directory):
-        for fname in filenames:
-            ext = os.path.splitext(fname)[1].lower()
-            if ext in AUDIO_EXTENSIONS:
-                files.append(os.path.join(root, fname))
-    logger.info(f"Discovered {len(files)} audio files in {directory}")
+    if recursive:
+        for root, _dirs, filenames in os.walk(directory):
+            for fname in filenames:
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in AUDIO_EXTENSIONS:
+                    files.append(os.path.join(root, fname))
+    else:
+        for fname in os.listdir(directory):
+            full = os.path.join(directory, fname)
+            if os.path.isfile(full):
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in AUDIO_EXTENSIONS:
+                    files.append(full)
+    logger.info(f"Discovered {len(files)} audio files in {directory} (recursive={recursive})")
     return files
 
 
@@ -158,6 +171,7 @@ def scan_directory(
     directory: str,
     progress_callback: Optional[Callable[[int, int], None]] = None,
     workers: Optional[int] = None,
+    recursive: bool = True,
 ) -> List[TrackInfo]:
     """Scan all audio files in a directory using multiprocessing.
 
@@ -169,7 +183,7 @@ def scan_directory(
     Returns:
         List of TrackInfo objects
     """
-    file_paths = discover_audio_files(directory)
+    file_paths = discover_audio_files(directory, recursive=recursive)
     total = len(file_paths)
 
     if total == 0:

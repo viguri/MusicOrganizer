@@ -25,12 +25,14 @@ _tasks: Dict[str, Dict] = {}
 class ScanRequest(BaseModel):
     directory: str
     save_to_db: bool = True
+    recursive: bool = True
 
 
 class AnalyzeRequest(BaseModel):
     directory: str
     use_embeddings: bool = True
     target_folders: int = 50
+    recursive: bool = True
 
 
 @router.post("/start")
@@ -43,7 +45,7 @@ async def start_scan(request: ScanRequest, background_tasks: BackgroundTasks):
     task_id = str(uuid.uuid4())[:8]
     _tasks[task_id] = {"status": "running", "type": "scan"}
 
-    background_tasks.add_task(_run_scan, task_id, directory, request.save_to_db)
+    background_tasks.add_task(_run_scan, task_id, directory, request.save_to_db, request.recursive)
 
     return {"task_id": task_id, "status": "started", "directory": directory}
 
@@ -58,7 +60,7 @@ async def start_analyze_genres(request: AnalyzeRequest, background_tasks: Backgr
     task_id = str(uuid.uuid4())[:8]
     _tasks[task_id] = {"status": "running", "type": "analyze"}
 
-    background_tasks.add_task(_run_analyze, task_id, directory, request.use_embeddings, request.target_folders)
+    background_tasks.add_task(_run_analyze, task_id, directory, request.use_embeddings, request.target_folders, request.recursive)
 
     return {"task_id": task_id, "status": "started"}
 
@@ -106,14 +108,15 @@ async def get_label_mapping():
 
 # ── Background tasks ──────────────────────────────────────────────────────────
 
-async def _run_scan(task_id: str, directory: str, save_to_db: bool):
+async def _run_scan(task_id: str, directory: str, save_to_db: bool, recursive: bool = True):
     """Background task for scanning."""
     loop = asyncio.get_event_loop()
 
-    await manager.send_status(task_id, "started", f"Scanning {directory}...")
+    mode = "recursive" if recursive else "top-level only"
+    await manager.send_status(task_id, "started", f"Scanning {directory} ({mode})...")
 
     try:
-        file_paths = await loop.run_in_executor(None, discover_audio_files, directory)
+        file_paths = await loop.run_in_executor(None, lambda: discover_audio_files(directory, recursive=recursive))
         total = len(file_paths)
         await manager.send_progress(task_id, 0, total, f"Found {total} audio files")
 
@@ -124,7 +127,7 @@ async def _run_scan(task_id: str, directory: str, save_to_db: bool):
             )
 
         tracks = await loop.run_in_executor(
-            None, lambda: scan_directory(directory, progress_callback=progress_cb)
+            None, lambda: scan_directory(directory, progress_callback=progress_cb, recursive=recursive)
         )
 
         if save_to_db:
@@ -189,11 +192,12 @@ async def _run_scan(task_id: str, directory: str, save_to_db: bool):
         await manager.send_status(task_id, "error", str(e))
 
 
-async def _run_analyze(task_id: str, directory: str, use_embeddings: bool, target_folders: int):
+async def _run_analyze(task_id: str, directory: str, use_embeddings: bool, target_folders: int, recursive: bool = True):
     """Background task for genre analysis."""
     loop = asyncio.get_event_loop()
 
-    await manager.send_status(task_id, "started", f"Analyzing genres in {directory}...")
+    mode = "recursive" if recursive else "top-level only"
+    await manager.send_status(task_id, "started", f"Analyzing genres in {directory} ({mode})...")
 
     try:
         def progress_cb(current, total_count):
@@ -204,7 +208,7 @@ async def _run_analyze(task_id: str, directory: str, use_embeddings: bool, targe
 
         result = await loop.run_in_executor(
             None,
-            lambda: analyze_genres(directory, use_embeddings=use_embeddings, target_folders=target_folders, progress_callback=progress_cb),
+            lambda: analyze_genres(directory, use_embeddings=use_embeddings, target_folders=target_folders, progress_callback=progress_cb, recursive=recursive),
         )
 
         _tasks[task_id] = {"status": "completed", "type": "analyze", "result": result}
