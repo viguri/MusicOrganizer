@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { FileText, Play, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import FolderPicker from "@/components/FolderPicker"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import ProgressBar from "@/components/ProgressBar"
 import TaskStatus from "@/components/TaskStatus"
@@ -72,11 +72,10 @@ export default function NameCleaner() {
 
       <Card>
         <CardContent className="p-4 space-y-3">
-          <Input
-            placeholder="Directory path to clean"
+          <FolderPicker
             value={directory}
-            onChange={(e) => setDirectory(e.target.value)}
-            className="font-mono text-sm"
+            onChange={setDirectory}
+            placeholder="Directory path to clean"
           />
           <div className="flex gap-2">
             <Button

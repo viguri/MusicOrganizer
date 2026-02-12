@@ -1,11 +1,14 @@
-"""API routes for settings: config, folder_mapping, label_mapping."""
+"""API routes for settings: config, folder_mapping, label_mapping, filesystem browsing."""
 
 import json
 import logging
+import os
+import string
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.config import (
@@ -78,3 +81,47 @@ async def update_label_mapping(request: UpdateLabelMappingRequest):
         return {"status": "ok", "labels": len(request.mapping)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/browse")
+async def browse_directory(path: str = Query("", description="Directory path to browse. Empty returns drives/root.")):
+    """Browse filesystem directories for the folder picker dialog.
+
+    Returns the current path, parent path, and list of subdirectories.
+    When path is empty, returns available drives (Windows) or root (Unix).
+    """
+    # If no path provided, return drives (Windows) or root (Unix)
+    if not path or path.strip() == "":
+        if sys.platform == "win32":
+            drives = []
+            for letter in string.ascii_uppercase:
+                drive = f"{letter}:\\"
+                if os.path.isdir(drive):
+                    drives.append({"name": f"{letter}:", "path": drive})
+            return {"current": "", "parent": "", "directories": drives}
+        else:
+            path = "/"
+
+    p = Path(path)
+    if not p.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a directory: {path}")
+
+    # List subdirectories (skip hidden and system folders)
+    dirs = []
+    try:
+        for entry in sorted(p.iterdir()):
+            if entry.is_dir():
+                name = entry.name
+                if name.startswith(".") or name == "$RECYCLE.BIN" or name == "System Volume Information":
+                    continue
+                dirs.append({"name": name, "path": str(entry)})
+    except PermissionError:
+        pass
+
+    parent = str(p.parent) if p.parent != p else ""
+
+    return {
+        "current": str(p),
+        "parent": parent,
+        "directories": dirs,
+    }

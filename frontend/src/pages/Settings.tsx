@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Settings as SettingsIcon, Save } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import FolderPicker from "@/components/FolderPicker"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -55,30 +56,21 @@ export default function Settings() {
               <CardTitle className="text-base">Paths & Configuration</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Master Collection</label>
-                <Input
-                  value={config.master_collection}
-                  onChange={(e) => setConfig({ ...config, master_collection: e.target.value })}
-                  className="font-mono text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Styles Directory</label>
-                <Input
-                  value={config.styles_dir}
-                  onChange={(e) => setConfig({ ...config, styles_dir: e.target.value })}
-                  className="font-mono text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">New Releases Directory</label>
-                <Input
-                  value={config.new_releases_dir}
-                  onChange={(e) => setConfig({ ...config, new_releases_dir: e.target.value })}
-                  className="font-mono text-sm"
-                />
-              </div>
+              <FolderPicker
+                value={config.master_collection}
+                onChange={(v) => setConfig({ ...config, master_collection: v })}
+                label="Master Collection"
+              />
+              <FolderPicker
+                value={config.styles_dir}
+                onChange={(v) => setConfig({ ...config, styles_dir: v })}
+                label="Styles Directory"
+              />
+              <FolderPicker
+                value={config.new_releases_dir}
+                onChange={(v) => setConfig({ ...config, new_releases_dir: v })}
+                label="New Releases Directory"
+              />
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Target Folder Count</label>
                 <Input

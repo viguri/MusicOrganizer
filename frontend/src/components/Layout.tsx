@@ -8,8 +8,12 @@ import {
   Settings,
   Wifi,
   WifiOff,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react"
 import { useWebSocket } from "@/hooks/useWebSocket"
+import { useTheme } from "@/hooks/useTheme"
 import { useTaskStore } from "@/stores/taskStore"
 import { useEffect } from "react"
 
@@ -22,8 +26,12 @@ const navItems = [
   { to: "/settings", icon: Settings, label: "Settings" },
 ]
 
+const themeIcons = { light: Sun, dark: Moon, system: Monitor } as const
+const themeLabels = { light: "Light", dark: "Dark", system: "System" } as const
+
 export default function Layout() {
   const { connected, lastMessage } = useWebSocket()
+  const { theme, toggle } = useTheme()
   const updateFromWs = useTaskStore((s) => s.updateFromWs)
 
   useEffect(() => {
@@ -59,7 +67,15 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="p-4 border-t">
+        <div className="p-4 border-t space-y-2">
+          <button
+            onClick={toggle}
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors w-full px-1 py-1 rounded"
+            title={`Theme: ${themeLabels[theme]}`}
+          >
+            {(() => { const Icon = themeIcons[theme]; return <Icon className="h-3.5 w-3.5" />; })()}
+            <span>{themeLabels[theme]}</span>
+          </button>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {connected ? (
               <>

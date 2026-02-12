@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { FolderSync, Play, RotateCcw, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import FolderPicker from "@/components/FolderPicker"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import ProgressBar from "@/components/ProgressBar"
 import TaskStatus from "@/components/TaskStatus"
@@ -133,24 +133,18 @@ export default function Organize() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Source Directory</label>
-              <Input
-                placeholder="e.g. G:\__DJ-ING\__NEW_RELEASES"
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Destination (Styles)</label>
-              <Input
-                placeholder="e.g. G:\__DJ-ING\_______MASTER_COLLECTION\_STYLES"
-                value={dest}
-                onChange={(e) => setDest(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
+            <FolderPicker
+              value={source}
+              onChange={setSource}
+              placeholder="e.g. G:\__DJ-ING\__NEW_RELEASES"
+              label="Source Directory"
+            />
+            <FolderPicker
+              value={dest}
+              onChange={setDest}
+              placeholder="e.g. G:\__DJ-ING\_______MASTER_COLLECTION\_STYLES"
+              label="Destination (Styles)"
+            />
           </div>
           <div className="flex gap-2">
             <Button onClick={handlePlan} disabled={loading || !source.trim() || !dest.trim() || planTask?.status === "running"}>

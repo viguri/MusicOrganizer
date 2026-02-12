@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Copy, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import FolderPicker from "@/components/FolderPicker"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import ProgressBar from "@/components/ProgressBar"
@@ -79,24 +79,18 @@ export default function Duplicates() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Source Directory</label>
-              <Input
-                placeholder="Directory to scan for duplicates"
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Compare Against (optional)</label>
-              <Input
-                placeholder="Second directory to compare against"
-                value={against}
-                onChange={(e) => setAgainst(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
+            <FolderPicker
+              value={source}
+              onChange={setSource}
+              placeholder="Directory to scan for duplicates"
+              label="Source Directory"
+            />
+            <FolderPicker
+              value={against}
+              onChange={setAgainst}
+              placeholder="Second directory to compare against"
+              label="Compare Against (optional)"
+            />
           </div>
           <Button onClick={handleScan} disabled={loading || !source.trim() || task?.status === "running"}>
             <Play className="h-4 w-4" />

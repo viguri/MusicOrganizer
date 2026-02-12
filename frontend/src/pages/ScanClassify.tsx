@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { ScanSearch, Play, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import FolderPicker from "@/components/FolderPicker"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import ProgressBar from "@/components/ProgressBar"
@@ -97,14 +97,11 @@ export default function ScanClassify() {
       {/* Directory Input */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex gap-3">
-            <Input
-              placeholder="Directory path (e.g. G:\__DJ-ING\_______MASTER_COLLECTION)"
-              value={directory}
-              onChange={(e) => setDirectory(e.target.value)}
-              className="flex-1 font-mono text-sm"
-            />
-          </div>
+          <FolderPicker
+            value={directory}
+            onChange={setDirectory}
+            placeholder="Directory path (e.g. G:\__DJ-ING\_______MASTER_COLLECTION)"
+          />
         </CardContent>
       </Card>
 

@@ -126,3 +126,13 @@ export const updateLabelMapping = (mapping: Record<string, string>) =>
     method: "PUT",
     body: JSON.stringify({ mapping }),
   })
+
+// --- Filesystem browsing ---
+export interface BrowseResult {
+  current: string
+  parent: string
+  directories: { name: string; path: string }[]
+}
+
+export const browseDirectory = (path = "") =>
+  request<BrowseResult>(`/settings/browse?path=${encodeURIComponent(path)}`)
