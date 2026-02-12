@@ -56,11 +56,22 @@ class MoveItem:
 
 
 @dataclass
+class DuplicateItem:
+    """A source track that was detected as duplicate of an existing dest file."""
+    source: str
+    existing: str
+    file_name: str
+    method: str  # "name_size", "hash", "metadata"
+    detail: str  # human-readable reason
+
+
+@dataclass
 class OrganizePlan:
     plan_id: str
     source: str
     dest: str
     moves: List[MoveItem]
+    duplicates: List[DuplicateItem]
     already_correct: int
     unclassified: int
     total_files: int
@@ -75,6 +86,7 @@ class OrganizePlan:
             "files_to_move": self.files_to_move,
             "files_already_correct": self.already_correct,
             "files_unclassified": self.unclassified,
+            "duplicates_skipped": len(self.duplicates),
             "moves": [
                 {
                     "source": m.source,
@@ -86,6 +98,16 @@ class OrganizePlan:
                 }
                 for m in self.moves
             ],
+            "duplicates": [
+                {
+                    "source": d.source,
+                    "existing": d.existing,
+                    "file_name": d.file_name,
+                    "method": d.method,
+                    "detail": d.detail,
+                }
+                for d in self.duplicates[:200]  # Limit for API response size
+            ],
             "folder_summary": self._folder_summary(),
         }
 
@@ -96,34 +118,119 @@ class OrganizePlan:
         return dict(sorted(counts.items(), key=lambda x: -x[1]))
 
 
+def _index_dest_files(dest: str) -> Dict:
+    """Index existing files in destination directory for fast duplicate lookup.
+
+    Returns dict with:
+        by_name_size: {(filename_lower, size): [file_path, ...]}
+        by_meta: {(artist_lower, title_lower, duration_rounded): [file_path, ...]}
+        by_size: {size: [file_path, ...]}  (for hash comparison candidates)
+    """
+    from backend.modules.scanner import discover_audio_files
+
+    by_name_size: Dict[tuple, List[str]] = defaultdict(list)
+    by_meta: Dict[tuple, List[str]] = defaultdict(list)
+    by_size: Dict[int, List[str]] = defaultdict(list)
+
+    dest_files = discover_audio_files(dest, recursive=True)
+    logger.info(f"Indexing {len(dest_files)} existing files in destination for dedup")
+
+    for fp in dest_files:
+        try:
+            size = os.path.getsize(fp)
+            fname = os.path.basename(fp).lower()
+            by_name_size[(fname, size)].append(fp)
+            by_size[size].append(fp)
+        except OSError:
+            pass
+
+    # Metadata index: scan a sample or all files for artist+title+duration
+    # Only scan if dest has files (avoid unnecessary work)
+    if dest_files:
+        try:
+            from backend.modules.scanner import _scan_single_file
+            for fp in dest_files:
+                info = _scan_single_file(fp)
+                if info.artist and info.title:
+                    key = (
+                        info.artist.lower().strip(),
+                        info.title.lower().strip(),
+                        round(info.duration, 0) if info.duration else None,
+                    )
+                    by_meta[key].append(fp)
+        except Exception as e:
+            logger.warning(f"Metadata indexing failed: {e}")
+
+    return {
+        "by_name_size": dict(by_name_size),
+        "by_meta": dict(by_meta),
+        "by_size": dict(by_size),
+    }
+
+
+def _compute_file_hash(file_path: str) -> Optional[str]:
+    """Compute SHA-256 hash of a file. Returns hex digest or None on error."""
+    try:
+        import hashlib
+        h = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            while True:
+                chunk = f.read(65536)
+                if not chunk:
+                    break
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return None
+
+
 def plan_organize(
     source: str,
     dest: str,
     recursive: bool = True,
+    skip_duplicates: bool = True,
     progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> OrganizePlan:
     """Scan source directory and plan file moves (dry-run).
+
+    Includes 3-level duplicate detection against existing files in dest:
+    1. Name+Size: same filename and file size → skip (fast, no extra I/O)
+    2. SHA-256 Hash: same content → skip (precise, reads both files)
+    3. Metadata: same artist+title+duration → skip (fuzzy, catches renamed dupes)
 
     Args:
         source: Source directory to scan
         dest: Destination root (e.g. _STYLES/)
         recursive: If True, scan subdirectories recursively
+        skip_duplicates: If True, detect and skip duplicates
         progress_callback: Called with (current, total)
 
     Returns:
-        OrganizePlan with all proposed moves
+        OrganizePlan with moves and detected duplicates
     """
     import uuid
 
     tracks = scan_directory(source, progress_callback=progress_callback, recursive=recursive)
     plan_id = str(uuid.uuid4())[:8]
 
-    moves: List[MoveItem] = []
-    already_correct = 0
-    unclassified = 0
-
     # Pre-resolve dest as absolute path once
     dest_abs = os.path.abspath(dest)
+
+    # ── Index existing dest files for duplicate detection ──────────────────
+    dest_index = None
+    if skip_duplicates:
+        logger.info("Indexing destination for duplicate detection...")
+        dest_index = _index_dest_files(dest_abs)
+        logger.info(
+            f"Dest index: {len(dest_index['by_name_size'])} name+size entries, "
+            f"{len(dest_index['by_meta'])} metadata entries, "
+            f"{len(dest_index['by_size'])} size groups"
+        )
+
+    moves: List[MoveItem] = []
+    duplicates: List[DuplicateItem] = []
+    already_correct = 0
+    unclassified = 0
 
     for track in tracks:
         source_folder = Path(track.file_path).parent.name
@@ -137,6 +244,65 @@ def plan_organize(
             already_correct += 1
             continue
 
+        # ── 3-level duplicate detection ───────────────────────────────────
+        if skip_duplicates and dest_index:
+            is_dup = False
+
+            # Level 1: Name + Size (fast — no extra I/O)
+            name_key = (track.file_name.lower(), track.file_size)
+            existing_by_name = dest_index["by_name_size"].get(name_key)
+            if existing_by_name:
+                duplicates.append(DuplicateItem(
+                    source=track.file_path,
+                    existing=existing_by_name[0],
+                    file_name=track.file_name,
+                    method="name_size",
+                    detail=f"Same filename and size ({track.file_size} bytes)",
+                ))
+                is_dup = True
+
+            # Level 2: SHA-256 Hash (precise — reads files, only if same-size files exist in dest)
+            if not is_dup:
+                same_size_files = dest_index["by_size"].get(track.file_size)
+                if same_size_files:
+                    src_hash = _compute_file_hash(track.file_path)
+                    if src_hash:
+                        for dest_file in same_size_files:
+                            dest_hash = _compute_file_hash(dest_file)
+                            if src_hash == dest_hash:
+                                duplicates.append(DuplicateItem(
+                                    source=track.file_path,
+                                    existing=dest_file,
+                                    file_name=track.file_name,
+                                    method="hash",
+                                    detail=f"Identical content (SHA-256: {src_hash[:12]}...)",
+                                ))
+                                is_dup = True
+                                break
+
+            # Level 3: Metadata — artist + title + duration (catches renamed duplicates)
+            if not is_dup and track.artist and track.title:
+                meta_key = (
+                    track.artist.lower().strip(),
+                    track.title.lower().strip(),
+                    round(track.duration, 0) if track.duration else None,
+                )
+                existing_by_meta = dest_index["by_meta"].get(meta_key)
+                if existing_by_meta:
+                    dur_str = f", duration ~{int(track.duration)}s" if track.duration else ""
+                    duplicates.append(DuplicateItem(
+                        source=track.file_path,
+                        existing=existing_by_meta[0],
+                        file_name=track.file_name,
+                        method="metadata",
+                        detail=f"Same artist+title{dur_str}: {track.artist} - {track.title}",
+                    ))
+                    is_dup = True
+
+            if is_dup:
+                continue
+
+        # ── Not a duplicate — add to moves ────────────────────────────────
         if folder == UNCLASSIFIED_FOLDER:
             unclassified += 1
 
@@ -154,6 +320,7 @@ def plan_organize(
         source=source,
         dest=dest,
         moves=moves,
+        duplicates=duplicates,
         already_correct=already_correct,
         unclassified=unclassified,
         total_files=len(tracks),
@@ -161,8 +328,8 @@ def plan_organize(
     )
 
     logger.info(
-        f"Plan {plan_id}: {len(moves)} to move, {already_correct} correct, "
-        f"{unclassified} unclassified out of {len(tracks)} total"
+        f"Plan {plan_id}: {len(moves)} to move, {len(duplicates)} duplicates skipped, "
+        f"{already_correct} correct, {unclassified} unclassified out of {len(tracks)} total"
     )
     return plan
 

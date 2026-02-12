@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { FolderSync, Play, RotateCcw, Trash2, FolderTree, Folder } from "lucide-react"
+import { FolderSync, Play, RotateCcw, Trash2, FolderTree, Folder, AlertTriangle } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import FolderPicker from "@/components/FolderPicker"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +24,14 @@ interface MoveItem {
   genre_raw: string
   strategy: string
   file_name: string
+}
+
+interface DuplicateItem {
+  source: string
+  existing: string
+  file_name: string
+  method: string
+  detail: string
 }
 
 export default function Organize() {
@@ -121,6 +130,7 @@ export default function Organize() {
 
   const planTask = planTaskId ? tasks[planTaskId] : undefined
   const moves = (planResult?.moves ?? []) as MoveItem[]
+  const duplicates = (planResult?.duplicates ?? []) as DuplicateItem[]
   const folderSummary = (planResult?.folder_summary ?? {}) as Record<string, number>
 
   return (
@@ -240,6 +250,10 @@ export default function Organize() {
                 <p className="text-xs text-muted-foreground">Unclassified</p>
                 <p className="text-xl font-bold text-amber-600">{String(planResult.files_unclassified)}</p>
               </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Duplicates Skipped</p>
+                <p className="text-xl font-bold text-orange-600">{String(planResult.duplicates_skipped ?? 0)}</p>
+              </div>
             </div>
 
             {/* Folder Summary */}
@@ -256,6 +270,45 @@ export default function Organize() {
                       </div>
                     ))}
                 </div>
+              </div>
+            )}
+
+            {/* Duplicates Table */}
+            {duplicates.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-2 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-orange-500" />
+                  Duplicates Detected ({duplicates.length})
+                </p>
+                <div className="border rounded-md overflow-auto max-h-64 border-orange-500/30">
+                  <table className="w-full text-sm">
+                    <thead className="bg-orange-500/10 sticky top-0">
+                      <tr>
+                        <th className="text-left p-2 font-medium">Source File</th>
+                        <th className="text-left p-2 font-medium">Existing In Dest</th>
+                        <th className="text-left p-2 font-medium">Method</th>
+                        <th className="text-left p-2 font-medium">Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {duplicates.slice(0, 100).map((d, i) => (
+                        <tr key={i} className="border-t hover:bg-muted/30">
+                          <td className="p-2 font-mono text-xs truncate max-w-48">{d.file_name}</td>
+                          <td className="p-2 font-mono text-xs truncate max-w-48">{d.existing.split(/[\\/]/).pop()}</td>
+                          <td className="p-2 text-xs">
+                            <Badge variant={d.method === "hash" ? "destructive" : d.method === "name_size" ? "secondary" : "outline"} className="text-[10px]">
+                              {d.method === "name_size" ? "Name+Size" : d.method === "hash" ? "SHA-256" : "Metadata"}
+                            </Badge>
+                          </td>
+                          <td className="p-2 text-xs truncate max-w-64 text-muted-foreground">{d.detail}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {duplicates.length > 100 && (
+                  <p className="text-xs text-muted-foreground mt-1">Showing first 100 of {duplicates.length} duplicates</p>
+                )}
               </div>
             )}
 

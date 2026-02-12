@@ -26,18 +26,26 @@ export function useWebSocket(): UseWebSocketReturn {
   const [messages, setMessages] = useState<WsMessage[]>([])
   const [lastMessage, setLastMessage] = useState<WsMessage | null>(null)
   const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef = useRef(true)
 
   useEffect(() => {
+    mountedRef.current = true
+
     function connect() {
+      if (!mountedRef.current) return
+
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
       const wsUrl = `${protocol}//${window.location.host}/ws`
 
       const ws = new WebSocket(wsUrl)
       wsRef.current = ws
 
-      ws.onopen = () => setConnected(true)
+      ws.onopen = () => {
+        if (mountedRef.current) setConnected(true)
+      }
 
       ws.onmessage = (event) => {
+        if (!mountedRef.current) return
         try {
           const msg: WsMessage = JSON.parse(event.data as string)
           setMessages((prev) => [...prev.slice(-200), msg])
@@ -48,16 +56,20 @@ export function useWebSocket(): UseWebSocketReturn {
       }
 
       ws.onclose = () => {
+        if (!mountedRef.current) return
         setConnected(false)
         wsRef.current = null
         reconnectTimeout.current = setTimeout(connect, 3000)
       }
 
-      ws.onerror = () => ws.close()
+      ws.onerror = () => {
+        if (mountedRef.current) ws.close()
+      }
     }
 
     connect()
     return () => {
+      mountedRef.current = false
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current)
       wsRef.current?.close()
     }
