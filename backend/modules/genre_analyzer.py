@@ -4,16 +4,19 @@ import json
 import logging
 from collections import Counter
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Tuple
 
 from backend.config import (
     FOLDER_MAPPING_PATH,
     LABEL_MAPPING_PATH,
+    OTHER_FOLDER,
     TARGET_FOLDER_COUNT,
 )
-from backend.modules.scanner import scan_directory, TrackInfo
-from backend.modules.genre_parser import parse_genre
+from backend.modules.scanner import scan_directory
+from backend.modules.genre_parser import parse_genre, is_valid_genre_name, sanitize_folder_name
 from backend.modules.ai_embeddings import group_genres_by_similarity
+from backend.modules.ai_openai import is_openai_available, propose_folder_mapping_with_openai
+from backend.modules.ai_ollama import is_ollama_available, propose_folder_mapping_with_ollama
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +24,8 @@ logger = logging.getLogger(__name__)
 def analyze_genres(
     directory: str,
     use_embeddings: bool = True,
+    use_openai: bool = False,
+    grouping_mode: Literal["backend", "openai", "ollama"] = "backend",
     target_folders: int = TARGET_FOLDER_COUNT,
     progress_callback: Optional[Callable[[int, int], None]] = None,
     recursive: bool = True,
@@ -36,8 +41,17 @@ def analyze_genres(
     genre_counter: Counter = Counter()
     label_genre_map: Dict[str, Counter] = {}  # label → Counter of genres
 
+    invalid_genre_count = 0
+
     for track in tracks:
-        genres = parse_genre(track.genre_raw)
+        parsed = parse_genre(track.genre_raw)
+        genres = [g for g in parsed if is_valid_genre_name(g)]
+        invalid_genre_count += max(0, len(parsed) - len(genres))
+
+        if not genres:
+            # Broken/empty genre tags are grouped into Other
+            genre_counter[OTHER_FOLDER] += 1
+
         for g in genres:
             genre_counter[g] += 1
 
@@ -53,23 +67,56 @@ def analyze_genres(
     # Step 3: Group genres
     genre_counts = dict(genre_counter)
 
-    if use_embeddings and len(genre_counts) > target_folders:
-        groups = group_genres_by_similarity(genre_counts, target_groups=target_folders)
-    else:
-        # Simple: each genre is its own folder (up to target)
-        top_genres = genre_counter.most_common(target_folders)
-        groups = {g: [g] for g, _ in top_genres}
-        # Remaining go to "Other"
-        remaining = [g for g in genre_counts if g not in groups]
-        if remaining:
-            groups["Other"] = remaining
+    ai_mode = "heuristic"
+    ai_error: Optional[str] = None
+    selected_mode = "openai" if use_openai else grouping_mode
+
+    groups = {}
+    if selected_mode == "openai" and genre_counts:
+        if is_openai_available():
+            try:
+                groups = propose_folder_mapping_with_openai(genre_counts, target_folders=target_folders)
+                ai_mode = "openai"
+            except Exception as e:
+                ai_error = str(e)
+                logger.warning(f"OpenAI grouping failed, falling back to local grouping: {e}")
+        else:
+            ai_error = "OPENAI_API_KEY not configured"
+    elif selected_mode == "ollama" and genre_counts:
+        if is_ollama_available():
+            try:
+                groups = propose_folder_mapping_with_ollama(genre_counts, target_folders=target_folders)
+                ai_mode = "ollama"
+            except Exception as e:
+                ai_error = str(e)
+                logger.warning(f"Ollama grouping failed, falling back to local grouping: {e}")
+        else:
+            ai_error = "OLLAMA_MODEL not configured"
+
+    if not groups:
+        if use_embeddings and len(genre_counts) > target_folders:
+            groups = group_genres_by_similarity(genre_counts, target_groups=target_folders)
+            ai_mode = "embeddings"
+        else:
+            # Simple: each genre is its own folder (up to target)
+            top_genres = genre_counter.most_common(target_folders)
+            groups = {g: [g] for g, _ in top_genres}
+            # Remaining go to "Other"
+            remaining = [g for g in genre_counts if g not in groups]
+            if remaining:
+                groups[OTHER_FOLDER] = remaining
 
     # Step 4: Build folder mapping (folder_name → [genres])
     folder_mapping: Dict[str, List[str]] = {}
     for leader, members in groups.items():
-        # Use the leader (most popular) as folder name
-        folder_name = _sanitize_folder_name(leader)
-        folder_mapping[folder_name] = sorted(members)
+        # Use the leader as folder name, but sanitize and merge on collision
+        folder_name = sanitize_folder_name(leader, fallback=OTHER_FOLDER)
+        existing = folder_mapping.setdefault(folder_name, [])
+        existing.extend(members)
+
+    # Deduplicate member genres after potential folder-name collisions
+    for folder_name, members in list(folder_mapping.items()):
+        folder_mapping[folder_name] = sorted(set(members))
 
     # Step 5: Build label mapping (label → primary genre)
     label_mapping: Dict[str, str] = {}
@@ -90,19 +137,15 @@ def analyze_genres(
         "unique_genres": len(genre_counts),
         "proposed_folders": len(folder_mapping),
         "labels_mapped": len(label_mapping),
+        "invalid_genres_filtered": invalid_genre_count,
+        "grouping_mode_requested": selected_mode,
+        "grouping_mode": ai_mode,
+        "openai_enabled": use_openai,
+        "openai_error": ai_error,
+        "fallback_reason": ai_error,
         "top_genres": top_genres_dict,
         "folder_mapping": folder_mapping,
     }
-
-
-def _sanitize_folder_name(name: str) -> str:
-    """Convert a genre name to a valid folder name."""
-    # Replace characters not allowed in folder names
-    invalid = '<>:"/\\|?*'
-    result = name
-    for ch in invalid:
-        result = result.replace(ch, "_")
-    return result.strip().strip(".")
 
 
 def _save_json(path: Path, data) -> None:

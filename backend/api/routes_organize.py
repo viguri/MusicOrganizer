@@ -13,13 +13,21 @@ from backend.api.websocket import manager
 from backend.modules.organizer import (
     plan_organize,
     execute_plan,
+    apply_folder_overrides,
     rollback,
     create_folder_structure,
     cleanup_empty_folders,
     OrganizePlan,
 )
 from backend.modules.name_cleaner import clean_directory
-from backend.modules.duplicates import find_duplicates
+from backend.modules.duplicates import find_duplicates, delete_duplicates, move_duplicates
+from backend.modules.database import (
+    get_db,
+    save_duplicate_scan,
+    get_duplicate_scan,
+    list_duplicate_scans,
+    delete_duplicate_scan,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/organize", tags=["organize"])
@@ -27,6 +35,7 @@ router = APIRouter(prefix="/organize", tags=["organize"])
 # In-memory task and plan tracking
 _tasks: Dict[str, Dict] = {}
 _plans: Dict[str, OrganizePlan] = {}
+_duplicate_results: Dict[str, Dict] = {}
 
 
 class OrganizeRequest(BaseModel):
@@ -46,8 +55,26 @@ class DuplicatesRequest(BaseModel):
     against: str | None = None
 
 
+class DeleteDuplicatesRequest(BaseModel):
+    use_hash: bool = True
+    use_metadata: bool = False
+    dry_run: bool = True
+
+
+class MoveDuplicatesRequest(BaseModel):
+    destination_folder: str
+    use_hash: bool = True
+    use_metadata: bool = False
+    dry_run: bool = True
+    preserve_structure: bool = True
+
+
 class RollbackRequest(BaseModel):
     rollback_log: str
+
+
+class PlanFolderOverridesRequest(BaseModel):
+    overrides: Dict[str, str]
 
 
 @router.post("/plan")
@@ -77,6 +104,18 @@ async def api_execute_plan(plan_id: str, background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_run_execute, task_id, plan)
     return {"task_id": task_id, "status": "started", "files_to_move": plan.files_to_move}
+
+
+@router.post("/plan/{plan_id}/folders")
+async def api_update_plan_folders(plan_id: str, request: PlanFolderOverridesRequest):
+    """Apply per-folder overrides to an existing plan before execution."""
+    plan = _plans.get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found. Create a plan first with /plan")
+
+    updated_plan = apply_folder_overrides(plan, request.overrides)
+    _plans[plan_id] = updated_plan
+    return {"status": "updated", "result": updated_plan.to_dict()}
 
 
 @router.post("/rollback")
@@ -117,6 +156,126 @@ async def api_scan_duplicates(request: DuplicatesRequest, background_tasks: Back
 
     background_tasks.add_task(_run_duplicates, task_id, request.source, request.against)
     return {"task_id": task_id, "status": "started"}
+
+
+@router.post("/duplicates/{task_id}/delete")
+async def api_delete_duplicates(task_id: str, request: DeleteDuplicatesRequest):
+    """Delete duplicate files from a previous scan result."""
+    # Try memory first, then database
+    duplicate_result = _duplicate_results.get(task_id)
+    if not duplicate_result:
+        with get_db() as conn:
+            duplicate_result = get_duplicate_scan(conn, task_id)
+    
+    if not duplicate_result:
+        raise HTTPException(
+            status_code=404, 
+            detail="Duplicate scan result not found. Run /duplicates first or scan may have expired."
+        )
+    
+    try:
+        result = delete_duplicates(
+            duplicate_result,
+            use_hash=request.use_hash,
+            use_metadata=request.use_metadata,
+            dry_run=request.dry_run
+        )
+        return result
+    except Exception as e:
+        logger.exception(f"Delete duplicates failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/duplicates/{task_id}/move")
+async def api_move_duplicates(task_id: str, request: MoveDuplicatesRequest):
+    """Move duplicate files to a quarantine folder instead of deleting them."""
+    # Try memory first, then database
+    duplicate_result = _duplicate_results.get(task_id)
+    if not duplicate_result:
+        with get_db() as conn:
+            duplicate_result = get_duplicate_scan(conn, task_id)
+    
+    if not duplicate_result:
+        raise HTTPException(
+            status_code=404, 
+            detail="Duplicate scan result not found. Run /duplicates first or scan may have expired."
+        )
+    
+    if not request.destination_folder:
+        raise HTTPException(
+            status_code=400,
+            detail="Destination folder is required"
+        )
+    
+    try:
+        result = move_duplicates(
+            duplicate_result,
+            destination_folder=request.destination_folder,
+            use_hash=request.use_hash,
+            use_metadata=request.use_metadata,
+            dry_run=request.dry_run,
+            preserve_structure=request.preserve_structure
+        )
+        return result
+    except Exception as e:
+        logger.exception(f"Move duplicates failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/duplicates/scans")
+async def api_list_duplicate_scans(limit: int = 20):
+    """List recent duplicate scans."""
+    try:
+        with get_db() as conn:
+            scans = list_duplicate_scans(conn, limit)
+        return {"scans": scans}
+    except Exception as e:
+        logger.exception(f"Failed to list duplicate scans: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/duplicates/{scan_id}")
+async def api_get_duplicate_scan(scan_id: str):
+    """Get a specific duplicate scan result."""
+    # Try memory first
+    result = _duplicate_results.get(scan_id)
+    if result:
+        return result
+    
+    # Try database
+    try:
+        with get_db() as conn:
+            result = get_duplicate_scan(conn, scan_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Duplicate scan not found")
+        
+        # Cache in memory for future requests
+        _duplicate_results[scan_id] = result
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to get duplicate scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/duplicates/{scan_id}")
+async def api_delete_duplicate_scan_record(scan_id: str):
+    """Delete a duplicate scan record from database."""
+    try:
+        with get_db() as conn:
+            deleted = delete_duplicate_scan(conn, scan_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Duplicate scan not found")
+        
+        # Remove from memory cache if present
+        _duplicate_results.pop(scan_id, None)
+        return {"status": "deleted", "scan_id": scan_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to delete duplicate scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/task/{task_id}")
@@ -251,6 +410,13 @@ async def _run_duplicates(task_id: str, source: str, against: str | None):
             None, lambda: find_duplicates(source, against=against, progress_callback=progress_cb)
         )
 
+        # Store result in memory for immediate access
+        _duplicate_results[task_id] = result
+        
+        # Persist result to database
+        with get_db() as conn:
+            save_duplicate_scan(conn, task_id, source, against, result)
+        
         _tasks[task_id] = {"status": "completed", "type": "duplicates", "result": result}
         await manager.send_result(task_id, result)
         await manager.send_status(task_id, "completed", f"Done: {result['total_hash_groups']} hash groups")

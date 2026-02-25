@@ -12,6 +12,7 @@ Performance-optimized for large collections (15K+ files):
 import json
 import logging
 import os
+import re
 import shutil
 import time
 from collections import defaultdict
@@ -21,9 +22,9 @@ from pathlib import Path
 from threading import Lock
 from typing import Callable, Dict, List, Optional, Set
 
-from backend.config import DATA_DIR, MOVER_WORKERS, UNCLASSIFIED_FOLDER
+from backend.config import DATA_DIR, MOVER_WORKERS, OTHER_FOLDER, UNCLASSIFIED_FOLDER
 from backend.modules.scanner import scan_directory, TrackInfo
-from backend.modules.genre_parser import parse_genre
+from backend.modules.genre_parser import sanitize_folder_name
 from backend.modules.genre_mapper import classify_track
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ class OrganizePlan:
     unclassified: int
     total_files: int
     files_to_move: int
+    elapsed_seconds: float
 
     def to_dict(self) -> Dict:
         return {
@@ -87,6 +89,7 @@ class OrganizePlan:
             "files_already_correct": self.already_correct,
             "files_unclassified": self.unclassified,
             "duplicates_skipped": len(self.duplicates),
+            "elapsed_seconds": round(self.elapsed_seconds, 2),
             "moves": [
                 {
                     "source": m.source,
@@ -184,6 +187,38 @@ def _compute_file_hash(file_path: str) -> Optional[str]:
         return None
 
 
+def _sanitize_folder_path(folder_path: str, fallback: str = OTHER_FOLDER) -> str:
+    """Sanitize user-provided folder path, preserving subfolder structure."""
+    parts = re.split(r"[\\/]+", folder_path or "")
+    safe_parts = [sanitize_folder_name(part, fallback="") for part in parts if part and part.strip()]
+    safe_parts = [p for p in safe_parts if p]
+    return os.path.join(*safe_parts) if safe_parts else fallback
+
+
+def apply_folder_overrides(plan: OrganizePlan, overrides: Dict[str, str]) -> OrganizePlan:
+    """Apply per-folder rename overrides to an existing plan.
+
+    Supports nested destinations such as "Techno/Peak Time".
+    """
+    if not overrides:
+        return plan
+
+    dest_abs = os.path.abspath(plan.dest)
+
+    for move in plan.moves:
+        requested = overrides.get(move.folder)
+        if not requested:
+            continue
+
+        new_folder = _sanitize_folder_path(requested, fallback=OTHER_FOLDER)
+        move.folder = new_folder
+        move.dest = os.path.join(dest_abs, new_folder, move.file_name)
+
+    plan.unclassified = sum(1 for move in plan.moves if move.folder == UNCLASSIFIED_FOLDER)
+    plan.files_to_move = len(plan.moves)
+    return plan
+
+
 def plan_organize(
     source: str,
     dest: str,
@@ -210,6 +245,7 @@ def plan_organize(
     """
     import uuid
 
+    t0 = time.perf_counter()
     tracks = scan_directory(source, progress_callback=progress_callback, recursive=recursive)
     plan_id = str(uuid.uuid4())[:8]
 
@@ -325,6 +361,7 @@ def plan_organize(
         unclassified=unclassified,
         total_files=len(tracks),
         files_to_move=len(moves),
+        elapsed_seconds=time.perf_counter() - t0,
     )
 
     logger.info(
@@ -488,7 +525,8 @@ def create_folder_structure(dest: str) -> Dict:
     created = 0
 
     for folder_name in mapping:
-        folder_path = dest_path / folder_name
+        safe_folder_name = sanitize_folder_name(folder_name, fallback=OTHER_FOLDER)
+        folder_path = dest_path / safe_folder_name
         if not folder_path.exists():
             folder_path.mkdir(parents=True, exist_ok=True)
             created += 1

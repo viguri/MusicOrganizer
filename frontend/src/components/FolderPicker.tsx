@@ -11,6 +11,24 @@ import {
 } from "@/components/ui/dialog"
 import { browseDirectory } from "@/lib/api"
 
+const LAST_PICKED_FOLDER_KEY = "music-organizer-last-folder"
+
+function getLastPickedFolder(): string {
+  try {
+    return localStorage.getItem(LAST_PICKED_FOLDER_KEY) || ""
+  } catch {
+    return ""
+  }
+}
+
+function setLastPickedFolder(path: string) {
+  try {
+    localStorage.setItem(LAST_PICKED_FOLDER_KEY, path)
+  } catch {
+    // Ignore storage errors (private mode, quota, etc.)
+  }
+}
+
 interface FolderPickerProps {
   value: string
   onChange: (path: string) => void
@@ -49,12 +67,13 @@ export default function FolderPicker({
 
   const handleOpen = () => {
     setOpen(true)
-    browse(value || "")
+    browse(value || getLastPickedFolder() || "")
   }
 
   const handleSelect = () => {
     if (currentPath) {
       onChange(currentPath)
+      setLastPickedFolder(currentPath)
     }
     setOpen(false)
   }

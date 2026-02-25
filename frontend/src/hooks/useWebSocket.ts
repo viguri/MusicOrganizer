@@ -71,7 +71,18 @@ export function useWebSocket(): UseWebSocketReturn {
     return () => {
       mountedRef.current = false
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current)
-      wsRef.current?.close()
+      const ws = wsRef.current
+      wsRef.current = null
+      if (!ws) return
+
+      // In React StrictMode, cleanup can run while socket is still CONNECTING.
+      // Calling close() in that state emits a noisy browser warning.
+      if (ws.readyState === WebSocket.CONNECTING) {
+        ws.addEventListener("open", () => ws.close(), { once: true })
+        return
+      }
+
+      ws.close()
     }
   }, [])
 

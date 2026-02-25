@@ -31,6 +31,8 @@ class ScanRequest(BaseModel):
 class AnalyzeRequest(BaseModel):
     directory: str
     use_embeddings: bool = True
+    use_openai: bool = False
+    grouping_mode: str = "backend"
     target_folders: int = 50
     recursive: bool = True
 
@@ -57,10 +59,26 @@ async def start_analyze_genres(request: AnalyzeRequest, background_tasks: Backgr
     if not Path(directory).is_dir():
         raise HTTPException(status_code=400, detail=f"Directory not found: {directory}")
 
+    grouping_mode = request.grouping_mode.strip().lower()
+    if "grouping_mode" not in request.model_fields_set and request.use_openai:
+        grouping_mode = "openai"
+
+    if grouping_mode not in {"backend", "openai", "ollama"}:
+        raise HTTPException(status_code=400, detail="Invalid grouping_mode. Use one of: backend, openai, ollama")
+
     task_id = str(uuid.uuid4())[:8]
     _tasks[task_id] = {"status": "running", "type": "analyze"}
 
-    background_tasks.add_task(_run_analyze, task_id, directory, request.use_embeddings, request.target_folders, request.recursive)
+    background_tasks.add_task(
+        _run_analyze,
+        task_id,
+        directory,
+        request.use_embeddings,
+        request.use_openai,
+        grouping_mode,
+        request.target_folders,
+        request.recursive,
+    )
 
     return {"task_id": task_id, "status": "started"}
 
@@ -192,7 +210,15 @@ async def _run_scan(task_id: str, directory: str, save_to_db: bool, recursive: b
         await manager.send_status(task_id, "error", str(e))
 
 
-async def _run_analyze(task_id: str, directory: str, use_embeddings: bool, target_folders: int, recursive: bool = True):
+async def _run_analyze(
+    task_id: str,
+    directory: str,
+    use_embeddings: bool,
+    use_openai: bool,
+    grouping_mode: str,
+    target_folders: int,
+    recursive: bool = True,
+):
     """Background task for genre analysis."""
     loop = asyncio.get_event_loop()
 
@@ -208,7 +234,15 @@ async def _run_analyze(task_id: str, directory: str, use_embeddings: bool, targe
 
         result = await loop.run_in_executor(
             None,
-            lambda: analyze_genres(directory, use_embeddings=use_embeddings, target_folders=target_folders, progress_callback=progress_cb, recursive=recursive),
+            lambda: analyze_genres(
+                directory,
+                use_embeddings=use_embeddings,
+                use_openai=use_openai,
+                grouping_mode=grouping_mode,
+                target_folders=target_folders,
+                progress_callback=progress_cb,
+                recursive=recursive,
+            ),
         )
 
         _tasks[task_id] = {"status": "completed", "type": "analyze", "result": result}

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { FolderSync, Play, RotateCcw, Trash2, FolderTree, Folder, AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ import {
   cleanupEmpty,
   getTaskStatus,
   getOrganizeTaskStatus,
+  updatePlanFolders,
 } from "@/lib/api"
 
 interface MoveItem {
@@ -43,8 +44,22 @@ export default function Organize() {
   const [planResult, setPlanResult] = useState<Record<string, unknown> | null>(null)
   const [execResult, setExecResult] = useState<Record<string, unknown> | null>(null)
   const [rollbackLog, setRollbackLog] = useState<string | null>(null)
+  const [folderOverrides, setFolderOverrides] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const tasks = useTaskStore((s) => s.tasks)
+
+  useEffect(() => {
+    if (!planResult) {
+      setFolderOverrides({})
+      return
+    }
+    const summary = (planResult.folder_summary ?? {}) as Record<string, number>
+    const initialOverrides: Record<string, string> = {}
+    Object.keys(summary).forEach((folder) => {
+      initialOverrides[folder] = folder
+    })
+    setFolderOverrides(initialOverrides)
+  }, [planResult])
 
   const pollTask = (taskId: string, getter: typeof getTaskStatus, onResult: (r: Record<string, unknown>) => void) => {
     const interval = setInterval(async () => {
@@ -63,6 +78,33 @@ export default function Organize() {
     }, 2000)
   }
 
+  const handleApplyFolderOverrides = async () => {
+    if (!planResult?.plan_id) return
+
+    const overrides = Object.fromEntries(
+      Object.entries(folderOverrides)
+        .map(([original, target]) => [original, target.trim()])
+        .filter(([original, target]) => target && target !== original)
+    ) as Record<string, string>
+
+    if (Object.keys(overrides).length === 0) {
+      alert("No folder name changes to apply")
+      return
+    }
+
+    setLoading(true)
+    try {
+      const res = await updatePlanFolders(String(planResult.plan_id), overrides)
+      setPlanResult(res.result)
+      setExecResult(null)
+      setRollbackLog(null)
+    } catch (e) {
+      alert(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handlePlan = async () => {
     if (!source.trim() || !dest.trim()) return
     setLoading(true)
@@ -71,7 +113,7 @@ export default function Organize() {
     try {
       const res = await planOrganize(source.trim(), dest.trim(), recursive)
       setPlanTaskId(res.task_id)
-      pollTask(res.task_id, getTaskStatus, (result) => setPlanResult(result))
+      pollTask(res.task_id, getOrganizeTaskStatus, (result) => setPlanResult(result))
     } catch (e) {
       alert(String(e))
     } finally {
@@ -132,6 +174,9 @@ export default function Organize() {
   const moves = (planResult?.moves ?? []) as MoveItem[]
   const duplicates = (planResult?.duplicates ?? []) as DuplicateItem[]
   const folderSummary = (planResult?.folder_summary ?? {}) as Record<string, number>
+  const hasFolderChanges = Object.entries(folderOverrides).some(
+    ([original, target]) => target.trim() !== "" && target.trim() !== original
+  )
 
   return (
     <div className="space-y-6">
@@ -233,7 +278,7 @@ export default function Organize() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               <div>
                 <p className="text-xs text-muted-foreground">Total Files</p>
                 <p className="text-xl font-bold">{String(planResult.total_files)}</p>
@@ -254,22 +299,54 @@ export default function Organize() {
                 <p className="text-xs text-muted-foreground">Duplicates Skipped</p>
                 <p className="text-xl font-bold text-orange-600">{String(planResult.duplicates_skipped ?? 0)}</p>
               </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Dry Run Time</p>
+                <p className="text-xl font-bold text-violet-600">
+                  {Number(planResult.elapsed_seconds ?? 0).toFixed(2)}s
+                </p>
+              </div>
             </div>
 
             {/* Folder Summary */}
             {Object.keys(folderSummary).length > 0 && (
               <div>
-                <p className="text-sm font-medium mb-2">By Destination Folder</p>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 max-h-48 overflow-y-auto">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <p className="text-sm font-medium">By Destination Folder (editable)</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleApplyFolderOverrides}
+                    disabled={loading || !hasFolderChanges}
+                  >
+                    Apply Folder Changes
+                  </Button>
+                </div>
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                   {Object.entries(folderSummary)
                     .sort(([, a], [, b]) => b - a)
                     .map(([folder, count]) => (
-                      <div key={folder} className="flex justify-between text-sm px-2 py-1 bg-muted/50 rounded">
-                        <span className="truncate">{folder}</span>
-                        <span className="text-muted-foreground ml-2">{count}</span>
+                      <div key={folder} className="grid grid-cols-12 gap-2 items-center text-sm">
+                        <span className="col-span-4 md:col-span-3 truncate text-muted-foreground" title={folder}>
+                          {folder}
+                        </span>
+                        <input
+                          className="col-span-6 md:col-span-7 rounded border border-input bg-background px-2 py-1 text-xs"
+                          value={folderOverrides[folder] ?? folder}
+                          onChange={(e) =>
+                            setFolderOverrides((prev) => ({
+                              ...prev,
+                              [folder]: e.target.value,
+                            }))
+                          }
+                          placeholder="Folder or subfolder path (e.g. Techno/Peak Time)"
+                        />
+                        <span className="col-span-2 text-right text-muted-foreground">{count}</span>
                       </div>
                     ))}
                 </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Use "/" to create subfolders (example: "House/Afro House"). Invalid characters are sanitized automatically.
+                </p>
               </div>
             )}
 

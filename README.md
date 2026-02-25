@@ -42,6 +42,28 @@ Open http://localhost:5173
 - **Duplicates** — SHA-256 hash + metadata duplicate detection
 - **Settings** — Configure paths, edit folder/label mappings
 
+## Hierarchization Modes (Analyze Genres)
+
+In **Scan & Classify → Analyze Genres**, you can choose:
+
+- **Backend**: local embeddings + heuristics (default)
+- **OpenAI**: cloud logical reorganization
+- **Ollama**: local model logical reorganization
+
+Set these environment variables before starting backend (only needed for corresponding mode):
+
+```bash
+OPENAI_API_KEY=your_api_key_here
+OPENAI_MODEL=gpt-4o-mini
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3:8b
+```
+
+Notes:
+- OpenAI mode is optional and may add latency/cost.
+- Ollama mode is optional and requires a local Ollama server/model.
+- If selected mode is unavailable/fails, backend falls back automatically to local embeddings/heuristics.
+
 ## Architecture
 
 ```

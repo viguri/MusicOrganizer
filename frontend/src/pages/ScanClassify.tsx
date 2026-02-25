@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import ProgressBar from "@/components/ProgressBar"
 import TaskStatus from "@/components/TaskStatus"
 import { useTaskStore } from "@/stores/taskStore"
-import { startScan, analyzeGenres, getTaskStatus } from "@/lib/api"
+import { startScan, analyzeGenres, getTaskStatus, type GenreGroupingMode } from "@/lib/api"
 
 function TopGenresList({ genres }: { genres: Record<string, number> }) {
   return (
@@ -30,6 +30,7 @@ function TopGenresList({ genres }: { genres: Record<string, number> }) {
 export default function ScanClassify() {
   const [directory, setDirectory] = useState("")
   const [recursive, setRecursive] = useState(true)
+  const [groupingMode, setGroupingMode] = useState<GenreGroupingMode>("backend")
   const [scanTaskId, setScanTaskId] = useState<string | null>(null)
   const [analyzeTaskId, setAnalyzeTaskId] = useState<string | null>(null)
   const [scanResult, setScanResult] = useState<Record<string, unknown> | null>(null)
@@ -58,7 +59,7 @@ export default function ScanClassify() {
     setLoading(true)
     setAnalyzeResult(null)
     try {
-      const res = await analyzeGenres(directory.trim(), true, 50, recursive)
+      const res = await analyzeGenres(directory.trim(), true, 50, recursive, groupingMode)
       setAnalyzeTaskId(res.task_id)
       pollTask(res.task_id, (result) => setAnalyzeResult(result))
     } catch (e) {
@@ -197,6 +198,32 @@ export default function ScanClassify() {
                 and generates a folder_mapping.json with ~50 proposed style folders.
               </p>
 
+              <div className="space-y-2">
+                <label htmlFor="grouping-mode" className="text-sm font-medium">
+                  Hierarchization mode
+                </label>
+                <select
+                  id="grouping-mode"
+                  value={groupingMode}
+                  onChange={(e) => setGroupingMode(e.target.value as GenreGroupingMode)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="backend">Backend (embeddings + heuristics)</option>
+                  <option value="openai">OpenAI (logical reorganization)</option>
+                  <option value="ollama">Ollama (local model reorganization)</option>
+                </select>
+                {groupingMode === "openai" && (
+                  <p className="text-xs text-muted-foreground">
+                    Requires OPENAI_API_KEY. May add latency/cost; falls back automatically if unavailable.
+                  </p>
+                )}
+                {groupingMode === "ollama" && (
+                  <p className="text-xs text-muted-foreground">
+                    Uses local Ollama endpoint (OLLAMA_BASE_URL/OLLAMA_MODEL). Falls back automatically if unavailable.
+                  </p>
+                )}
+              </div>
+
               <ProgressBar taskId={analyzeTaskId} />
 
               {analyzeResult && (
@@ -218,6 +245,23 @@ export default function ScanClassify() {
                       <p className="text-xs text-muted-foreground">Labels Mapped</p>
                       <p className="text-xl font-bold">{String(analyzeResult.labels_mapped)}</p>
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="rounded border p-2">
+                      <p className="text-xs text-muted-foreground">Requested Mode</p>
+                      <p className="text-sm font-medium">{String(analyzeResult.grouping_mode_requested ?? "backend")}</p>
+                    </div>
+                    <div className="rounded border p-2">
+                      <p className="text-xs text-muted-foreground">Grouping Mode</p>
+                      <p className="text-sm font-medium">{String(analyzeResult.grouping_mode ?? "heuristic")}</p>
+                    </div>
+                    {analyzeResult.fallback_reason != null && String(analyzeResult.fallback_reason).trim() !== "" && (
+                      <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2">
+                        <p className="text-xs text-amber-700 dark:text-amber-300">Fallback reason</p>
+                        <p className="text-xs text-amber-800 dark:text-amber-200">{String(analyzeResult.fallback_reason)}</p>
+                      </div>
+                    )}
                   </div>
 
                   {analyzeResult.top_genres != null && typeof analyzeResult.top_genres === "object" && (

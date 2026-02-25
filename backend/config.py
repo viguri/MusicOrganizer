@@ -38,6 +38,7 @@ SCANNER_CHUNKSIZE = 64
 # ── Organizer ──────────────────────────────────────────────────────────────────
 MOVER_WORKERS = 16
 TARGET_FOLDER_COUNT = 50
+OTHER_FOLDER = "Other"
 UNCLASSIFIED_FOLDER = "__REVISAR"
 
 # ── Duplicates ─────────────────────────────────────────────────────────────────
@@ -45,6 +46,10 @@ HASH_CHUNK_SIZE = 65536  # 64 KB
 
 # ── AI: Embeddings ─────────────────────────────────────────────────────────────
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
+# ── AI: OpenAI (optional, for intelligent folder proposal) ────────────────────
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 # ── AI: Ollama (optional, for name cleaning) ───────────────────────────────────
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")

@@ -3,6 +3,23 @@
 import re
 from typing import List
 
+_INVALID_FOLDER_CHARS = '<>:"/\\|?*'
+
+# Low-signal values commonly found in broken tags/exports
+_INVALID_GENRE_TOKENS = {
+    "http",
+    "https",
+    "https_",
+    "www",
+    "genre",
+    "unknown",
+    "none",
+    "null",
+    "n/a",
+    "na",
+    "r",
+}
+
 # Common separators in genre tags
 _SEPARATORS = re.compile(r"[;,/&|]+")
 
@@ -35,6 +52,52 @@ _NORMALIZE_MAP = {
     "lofi": "Lo-Fi",
     "lo fi": "Lo-Fi",
 }
+
+
+def sanitize_folder_name(name: str, fallback: str = "Other") -> str:
+    """Convert arbitrary text to a valid, readable folder name."""
+    result = name or ""
+    for ch in _INVALID_FOLDER_CHARS:
+        result = result.replace(ch, "_")
+
+    # Collapse spaces/underscores and strip Windows-invalid trailing chars
+    result = re.sub(r"[\s_]+", " ", result).strip().strip(".")
+    return result if result else fallback
+
+
+def is_valid_genre_name(genre: str) -> bool:
+    """Heuristic validation to discard low-quality/broken genre values."""
+    if not genre:
+        return False
+
+    g = genre.strip()
+    if not g:
+        return False
+
+    g_lower = g.lower()
+    if g_lower in _INVALID_GENRE_TOKENS:
+        return False
+
+    # Reject URL-like values
+    if g_lower.startswith(("http://", "https://", "www.")):
+        return False
+
+    # Reject too short pure alpha tokens (e.g. "R")
+    if len(g) <= 1:
+        return False
+
+    # Keep only strings that contain at least one letter and are not absurdly long
+    if not re.search(r"[a-zA-Z]", g):
+        return False
+    if len(g) > 64:
+        return False
+
+    # Reject mostly punctuation/symbol noise
+    alnum = sum(ch.isalnum() for ch in g)
+    if alnum == 0 or (alnum / len(g)) < 0.5:
+        return False
+
+    return True
 
 
 def parse_genre(raw: str | None) -> List[str]:

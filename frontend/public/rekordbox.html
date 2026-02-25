@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rekordbox Browser - Music Organizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .stat-card .label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            height: calc(100vh - 400px);
+            min-height: 500px;
+        }
+
+        .sidebar {
+            background: #f8f9fa;
+            border-right: 1px solid #e0e0e0;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .main-panel {
+            padding: 30px;
+            overflow-y: auto;
+        }
+
+        .tree-item {
+            padding: 10px;
+            margin: 4px 0;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tree-item:hover {
+            background: #e9ecef;
+        }
+
+        .tree-item.active {
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+        }
+
+        .tree-item.folder {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .tree-item.playlist {
+            color: #6c757d;
+            padding-left: 30px;
+        }
+
+        .tree-item .icon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+
+        .tree-item .count {
+            margin-left: auto;
+            background: rgba(0, 0, 0, 0.1);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+        }
+
+        .tree-item.active .count {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .tree-children {
+            margin-left: 20px;
+        }
+
+        .track-list {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .track-list thead {
+            background: #667eea;
+            color: white;
+        }
+
+        .track-list th {
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+        }
+
+        .track-list td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .track-list tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .track-list tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px;
+        }
+
+        .error h3 {
+            margin-bottom: 10px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px;
+            color: #999;
+        }
+
+        .empty-state svg {
+            width: 100px;
+            height: 100px;
+            margin-bottom: 20px;
+            opacity: 0.3;
+        }
+
+        .db-path {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: #495057;
+            border-left: 4px solid #667eea;
+        }
+
+        .playlist-header {
+            margin-bottom: 30px;
+        }
+
+        .playlist-header h2 {
+            color: #333;
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+        }
+
+        .playlist-header .meta {
+            color: #666;
+            font-size: 0.95rem;
+        }
+
+        .toggle-icon {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            transition: transform 0.2s;
+        }
+
+        .toggle-icon.expanded {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Rekordbox Browser</h1>
+            <p>Explora tu colección de Rekordbox - Carpetas y Playlists</p>
+        </div>
+
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <div class="label">Total Tracks</div>
+                <div class="value" id="stat-tracks">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Playlists</div>
+                <div class="value" id="stat-playlists">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Folders</div>
+                <div class="value" id="stat-folders">-</div>
+            </div>
+        </div>
+
+        <div id="db-path-container"></div>
+
+        <div class="content">
+            <div class="sidebar" id="sidebar">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Cargando estructura de Rekordbox...</p>
+                </div>
+            </div>
+
+            <div class="main-panel" id="main-panel">
+                <div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                    </svg>
+                    <h3>Selecciona una playlist</h3>
+                    <p>Haz clic en una playlist de la izquierda para ver sus tracks</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+        let treeData = null;
+        let expandedFolders = new Set();
+
+        // Load initial data
+        async function init() {
+            try {
+                // Load stats
+                const statsResponse = await fetch(`${API_BASE}/rekordbox/stats`);
+                const stats = await statsResponse.json();
+                
+                if (stats.success) {
+                    document.getElementById('stat-tracks').textContent = stats.total_tracks.toLocaleString();
+                    document.getElementById('stat-playlists').textContent = stats.total_playlists.toLocaleString();
+                    document.getElementById('stat-folders').textContent = stats.total_folders.toLocaleString();
+                    
+                    // Show DB path
+                    const dbPathContainer = document.getElementById('db-path-container');
+                    dbPathContainer.innerHTML = `<div class="db-path">📁 Database: ${stats.db_path}</div>`;
+                }
+
+                // Load tree
+                const treeResponse = await fetch(`${API_BASE}/rekordbox/tree`);
+                const treeResult = await treeResponse.json();
+                
+                if (treeResult.error) {
+                    showError(treeResult);
+                    return;
+                }
+
+                treeData = treeResult.tree;
+                renderTree(treeData);
+
+            } catch (error) {
+                showError({ error: 'Connection Error', message: error.message });
+            }
+        }
+
+        function showError(errorData) {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.innerHTML = `
+                <div class="error">
+                    <h3>❌ ${errorData.error || 'Error'}</h3>
+                    <p>${errorData.message || 'Unknown error occurred'}</p>
+                    ${errorData.searched_path ? `<p style="margin-top: 10px;"><small>Searched: ${errorData.searched_path}</small></p>` : ''}
+                </div>
+            `;
+        }
+
+        function renderTree(items, container = null) {
+            if (!container) {
+                container = document.getElementById('sidebar');
+                container.innerHTML = '';
+            }
+
+            items.forEach(item => {
+                const itemDiv = document.createElement('div');
+                
+                if (item.is_folder) {
+                    const isExpanded = expandedFolders.has(item.id);
+                    
+                    itemDiv.innerHTML = `
+                        <div class="tree-item folder" data-id="${item.id}" data-type="folder">
+                            <span class="toggle-icon ${isExpanded ? 'expanded' : ''}">▶</span>
+                            <span class="icon">📁</span>
+                            <span>${item.name}</span>
+                            ${item.children.length > 0 ? `<span class="count">${item.children.length}</span>` : ''}
+                        </div>
+                        <div class="tree-children" style="display: ${isExpanded ? 'block' : 'none'}"></div>
+                    `;
+                    
+                    const folderElement = itemDiv.querySelector('.tree-item');
+                    folderElement.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleFolder(item.id, itemDiv);
+                    });
+
+                    if (item.children.length > 0) {
+                        const childrenContainer = itemDiv.querySelector('.tree-children');
+                        if (isExpanded) {
+                            renderTree(item.children, childrenContainer);
+                        }
+                    }
+                } else {
+                    itemDiv.innerHTML = `
+                        <div class="tree-item playlist" data-id="${item.id}" data-type="playlist">
+                            <span class="icon">🎵</span>
+                            <span>${item.name}</span>
+                            ${item.track_count > 0 ? `<span class="count">${item.track_count}</span>` : ''}
+                        </div>
+                    `;
+                    
+                    const playlistElement = itemDiv.querySelector('.tree-item');
+                    playlistElement.addEventListener('click', () => {
+                        loadPlaylist(item.id, item.name);
+                        
+                        // Update active state
+                        document.querySelectorAll('.tree-item.playlist').forEach(el => el.classList.remove('active'));
+                        playlistElement.classList.add('active');
+                    });
+                }
+
+                container.appendChild(itemDiv);
+            });
+        }
+
+        function toggleFolder(folderId, itemDiv) {
+            const childrenContainer = itemDiv.querySelector('.tree-children');
+            const toggleIcon = itemDiv.querySelector('.toggle-icon');
+            
+            if (expandedFolders.has(folderId)) {
+                expandedFolders.delete(folderId);
+                childrenContainer.style.display = 'none';
+                toggleIcon.classList.remove('expanded');
+            } else {
+                expandedFolders.add(folderId);
+                childrenContainer.style.display = 'block';
+                toggleIcon.classList.add('expanded');
+                
+                // Render children if not already rendered
+                if (childrenContainer.children.length === 0) {
+                    const folder = findItemById(treeData, folderId);
+                    if (folder && folder.children) {
+                        renderTree(folder.children, childrenContainer);
+                    }
+                }
+            }
+        }
+
+        function findItemById(items, id) {
+            for (const item of items) {
+                if (item.id === id) return item;
+                if (item.children) {
+                    const found = findItemById(item.children, id);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        async function loadPlaylist(playlistId, playlistName) {
+            const mainPanel = document.getElementById('main-panel');
+            mainPanel.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Cargando tracks de "${playlistName}"...</p>
+                </div>
+            `;
+
+            try {
+                const response = await fetch(`${API_BASE}/rekordbox/playlist/${playlistId}/tracks`);
+                const result = await response.json();
+
+                if (result.error) {
+                    mainPanel.innerHTML = `<div class="error"><h3>${result.error}</h3><p>${result.message}</p></div>`;
+                    return;
+                }
+
+                renderTracks(result.tracks, playlistName, result.track_count);
+
+            } catch (error) {
+                mainPanel.innerHTML = `<div class="error"><h3>Error</h3><p>${error.message}</p></div>`;
+            }
+        }
+
+        function renderTracks(tracks, playlistName, trackCount) {
+            const mainPanel = document.getElementById('main-panel');
+            
+            if (tracks.length === 0) {
+                mainPanel.innerHTML = `
+                    <div class="playlist-header">
+                        <h2>${playlistName}</h2>
+                        <div class="meta">Esta playlist está vacía</div>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = `
+                <div class="playlist-header">
+                    <h2>${playlistName}</h2>
+                    <div class="meta">${trackCount} track${trackCount !== 1 ? 's' : ''}</div>
+                </div>
+                <table class="track-list">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Title</th>
+                            <th>Artist</th>
+                            <th>Album</th>
+                            <th>Genre</th>
+                            <th>BPM</th>
+                            <th>Key</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            tracks.forEach((track, index) => {
+                const duration = track.duration ? formatDuration(track.duration) : '-';
+                const bpm = track.bpm ? Math.round(track.bpm) : '-';
+                
+                html += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td><strong>${track.title || 'Unknown'}</strong></td>
+                        <td>${track.artist || 'Unknown'}</td>
+                        <td>${track.album || '-'}</td>
+                        <td>${track.genre || '-'}</td>
+                        <td>${bpm}</td>
+                        <td>${track.key || '-'}</td>
+                        <td>${duration}</td>
+                    </tr>
+                `;
+            });
+
+            html += `
+                    </tbody>
+                </table>
+            `;
+
+            mainPanel.innerHTML = html;
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds) return '-';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Initialize on page load
+        init();
+    </script>
+</body>
+</html>

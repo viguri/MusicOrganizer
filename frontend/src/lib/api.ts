@@ -1,5 +1,7 @@
 const API_BASE = "/api"
 
+export type GenreGroupingMode = "backend" | "openai" | "ollama"
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json", ...options?.headers },
@@ -29,10 +31,23 @@ export const startScan = (directory: string, save_to_db = true, recursive = true
     body: JSON.stringify({ directory, save_to_db, recursive }),
   })
 
-export const analyzeGenres = (directory: string, use_embeddings = true, target_folders = 50, recursive = true) =>
+export const analyzeGenres = (
+  directory: string,
+  use_embeddings = true,
+  target_folders = 50,
+  recursive = true,
+  grouping_mode: GenreGroupingMode = "backend"
+) =>
   request<{ task_id: string; status: string }>("/scan/analyze-genres", {
     method: "POST",
-    body: JSON.stringify({ directory, use_embeddings, target_folders, recursive }),
+    body: JSON.stringify({
+      directory,
+      use_embeddings,
+      grouping_mode,
+      use_openai: grouping_mode === "openai",
+      target_folders,
+      recursive,
+    }),
   })
 
 export const getTaskStatus = (task_id: string) =>
@@ -65,6 +80,12 @@ export const executePlan = (plan_id: string) =>
     { method: "POST" }
   )
 
+export const updatePlanFolders = (plan_id: string, overrides: Record<string, string>) =>
+  request<{ status: string; result: Record<string, unknown> }>(`/organize/plan/${plan_id}/folders`, {
+    method: "POST",
+    body: JSON.stringify({ overrides }),
+  })
+
 export const rollbackMoves = (rollback_log: string) =>
   request<Record<string, unknown>>("/organize/rollback", {
     method: "POST",
@@ -81,6 +102,62 @@ export const scanDuplicates = (source: string, against?: string) =>
   request<{ task_id: string; status: string }>("/organize/duplicates", {
     method: "POST",
     body: JSON.stringify({ source, against }),
+  })
+
+export const deleteDuplicates = (task_id: string, use_hash = true, use_metadata = false, dry_run = true) =>
+  request<{
+    dry_run: boolean
+    total_to_delete: number
+    total_deleted: number
+    total_errors: number
+    files_to_delete: Array<{ path: string; reason: string; type: string }>
+    errors: Array<{ path: string; reason: string; type: string; error: string }>
+  }>(`/organize/duplicates/${task_id}/delete`, {
+    method: "POST",
+    body: JSON.stringify({ use_hash, use_metadata, dry_run }),
+  })
+
+export const moveDuplicates = (
+  task_id: string,
+  destination_folder: string,
+  use_hash = true,
+  use_metadata = false,
+  dry_run = true,
+  preserve_structure = true
+) =>
+  request<{
+    dry_run: boolean
+    total_to_move: number
+    total_moved: number
+    total_errors: number
+    files_to_move: Array<{ path: string; reason: string; type: string; destination?: string }>
+    errors: Array<{ path: string; reason: string; type: string; error: string }>
+    destination_folder: string | null
+  }>(`/organize/duplicates/${task_id}/move`, {
+    method: "POST",
+    body: JSON.stringify({ destination_folder, use_hash, use_metadata, dry_run, preserve_structure }),
+  })
+
+export const listDuplicateScans = (limit = 20) =>
+  request<{
+    scans: Array<{
+      id: string
+      source_dir: string
+      against_dir: string | null
+      total_hash_groups: number
+      total_hash_files: number
+      total_meta_groups: number
+      total_meta_files: number
+      created_at: string
+    }>
+  }>(`/organize/duplicates/scans?limit=${limit}`)
+
+export const getDuplicateScan = (scan_id: string) =>
+  request<Record<string, unknown>>(`/organize/duplicates/${scan_id}`)
+
+export const deleteDuplicateScanRecord = (scan_id: string) =>
+  request<{ status: string; scan_id: string }>(`/organize/duplicates/${scan_id}`, {
+    method: "DELETE",
   })
 
 export const getOrganizeTaskStatus = (task_id: string) =>

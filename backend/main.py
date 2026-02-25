@@ -18,6 +18,7 @@ from backend.api.websocket import manager
 from backend.api.routes_scan import router as scan_router
 from backend.api.routes_organize import router as organize_router
 from backend.api.routes_settings import router as settings_router
+from backend.api.routes_rekordbox import router as rekordbox_router
 from backend.modules.database import init_db
 
 logging.basicConfig(
@@ -45,6 +46,7 @@ app.add_middleware(
 app.include_router(scan_router, prefix="/api")
 app.include_router(organize_router, prefix="/api")
 app.include_router(settings_router, prefix="/api")
+app.include_router(rekordbox_router, prefix="/api")
 
 
 @app.on_event("startup")

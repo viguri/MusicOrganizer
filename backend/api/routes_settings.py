@@ -2,8 +2,6 @@
 
 import json
 import logging
-import os
-import string
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -24,6 +22,32 @@ from backend.modules.genre_mapper import reload_mappings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+def _list_windows_drives() -> List[Dict[str, str]]:
+    """List logical drives on Windows without probing each letter path.
+
+    Using GetLogicalDrives avoids slow/hanging checks on unavailable network drives.
+    """
+    try:
+        import ctypes
+
+        mask = ctypes.windll.kernel32.GetLogicalDrives()
+        drives: List[Dict[str, str]] = []
+        for i in range(26):
+            if mask & (1 << i):
+                letter = chr(ord("A") + i)
+                drives.append({"name": f"{letter}:", "path": f"{letter}:\\"})
+        return drives
+    except Exception:
+        # Conservative fallback if WinAPI call is unavailable
+        drives: List[Dict[str, str]] = []
+        for i in range(26):
+            letter = chr(ord("A") + i)
+            drive = Path(f"{letter}:\\")
+            if drive.exists():
+                drives.append({"name": f"{letter}:", "path": str(drive)})
+        return drives
 
 
 class UpdateFolderMappingRequest(BaseModel):
@@ -93,11 +117,7 @@ async def browse_directory(path: str = Query("", description="Directory path to 
     # If no path provided, return drives (Windows) or root (Unix)
     if not path or path.strip() == "":
         if sys.platform == "win32":
-            drives = []
-            for letter in string.ascii_uppercase:
-                drive = f"{letter}:\\"
-                if os.path.isdir(drive):
-                    drives.append({"name": f"{letter}:", "path": drive})
+            drives = _list_windows_drives()
             return {"current": "", "parent": "", "directories": drives}
         else:
             path = "/"

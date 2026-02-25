@@ -1,6 +1,7 @@
 """SQLite database for music inventory."""
 
 import sqlite3
+import json
 import logging
 from contextlib import contextmanager
 from pathlib import Path
@@ -38,12 +39,27 @@ CREATE TABLE IF NOT EXISTS tracks (
 );
 """
 
+CREATE_DUPLICATE_SCANS_TABLE = """
+CREATE TABLE IF NOT EXISTS duplicate_scans (
+    id TEXT PRIMARY KEY,
+    source_dir TEXT NOT NULL,
+    against_dir TEXT,
+    total_hash_groups INTEGER,
+    total_hash_files INTEGER,
+    total_meta_groups INTEGER,
+    total_meta_files INTEGER,
+    result_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 CREATE_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_tracks_genre ON tracks(genre_normalized);
 CREATE INDEX IF NOT EXISTS idx_tracks_status ON tracks(status);
 CREATE INDEX IF NOT EXISTS idx_tracks_hash ON tracks(file_hash);
 CREATE INDEX IF NOT EXISTS idx_tracks_source ON tracks(source_folder);
 CREATE INDEX IF NOT EXISTS idx_tracks_dest ON tracks(dest_folder);
+CREATE INDEX IF NOT EXISTS idx_duplicate_scans_created ON duplicate_scans(created_at DESC);
 """
 
 
@@ -53,6 +69,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(str(path)) as conn:
         conn.executescript(CREATE_TRACKS_TABLE)
+        conn.executescript(CREATE_DUPLICATE_SCANS_TABLE)
         conn.executescript(CREATE_INDEXES)
     logger.info(f"Database initialized at {path}")
 
@@ -175,3 +192,51 @@ def update_track_status(conn: sqlite3.Connection, file_path: str, status: str, d
             "UPDATE tracks SET status=?, updated_at=CURRENT_TIMESTAMP WHERE file_path=?",
             (status, file_path),
         )
+
+
+def save_duplicate_scan(conn: sqlite3.Connection, scan_id: str, source_dir: str, against_dir: Optional[str], result: Dict) -> None:
+    """Save a duplicate scan result to the database."""
+    conn.execute(
+        """INSERT INTO duplicate_scans (id, source_dir, against_dir, total_hash_groups, 
+           total_hash_files, total_meta_groups, total_meta_files, result_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            scan_id,
+            source_dir,
+            against_dir,
+            result.get("total_hash_groups", 0),
+            result.get("total_hash_files", 0),
+            result.get("total_meta_groups", 0),
+            result.get("total_meta_files", 0),
+            json.dumps(result),
+        ),
+    )
+    logger.info(f"Saved duplicate scan {scan_id} to database")
+
+
+def get_duplicate_scan(conn: sqlite3.Connection, scan_id: str) -> Optional[Dict]:
+    """Retrieve a duplicate scan result from the database."""
+    row = conn.execute(
+        "SELECT result_json FROM duplicate_scans WHERE id = ?",
+        (scan_id,),
+    ).fetchone()
+    if row:
+        return json.loads(row["result_json"])
+    return None
+
+
+def list_duplicate_scans(conn: sqlite3.Connection, limit: int = 20) -> List[Dict]:
+    """List recent duplicate scans."""
+    rows = conn.execute(
+        """SELECT id, source_dir, against_dir, total_hash_groups, total_hash_files,
+           total_meta_groups, total_meta_files, created_at
+           FROM duplicate_scans ORDER BY created_at DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_duplicate_scan(conn: sqlite3.Connection, scan_id: str) -> bool:
+    """Delete a duplicate scan from the database."""
+    cursor = conn.execute("DELETE FROM duplicate_scans WHERE id = ?", (scan_id,))
+    return cursor.rowcount > 0
