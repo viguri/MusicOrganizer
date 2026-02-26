@@ -6,10 +6,11 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.modules.rekordbox_reader import (
+    get_rekordbox_db_path,
     get_playlist_tree,
     get_playlist_tracks,
     get_rekordbox_stats,
-    get_rekordbox_db_path,
+    get_available_databases
 )
 
 logger = logging.getLogger(__name__)
@@ -25,14 +26,13 @@ async def api_get_playlist_tree(db_path: Optional[str] = Query(None)):
     """Get the complete Rekordbox playlist folder structure."""
     try:
         result = get_playlist_tree(db_path)
-        
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result)
-        
         return result
     except Exception as e:
         logger.exception(f"Error getting playlist tree: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "error": "Internal error",
+            "message": str(e)
+        }
 
 
 @router.get("/playlist/{playlist_id}/tracks")
@@ -43,14 +43,13 @@ async def api_get_playlist_tracks(
     """Get all tracks in a specific playlist."""
     try:
         result = get_playlist_tracks(playlist_id, db_path)
-        
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result)
-        
         return result
     except Exception as e:
         logger.exception(f"Error getting playlist tracks: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "error": "Internal error",
+            "message": str(e)
+        }
 
 
 @router.get("/stats")
@@ -58,14 +57,13 @@ async def api_get_rekordbox_stats(db_path: Optional[str] = Query(None)):
     """Get statistics about the Rekordbox library."""
     try:
         result = get_rekordbox_stats(db_path)
-        
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result)
-        
         return result
     except Exception as e:
         logger.exception(f"Error getting Rekordbox stats: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "error": "Internal error",
+            "message": str(e)
+        }
 
 
 @router.get("/db-path")
@@ -88,3 +86,22 @@ async def api_get_db_path():
     except Exception as e:
         logger.exception(f"Error getting DB path: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/databases")
+async def api_get_available_databases():
+    """Get list of available Rekordbox databases."""
+    try:
+        databases = get_available_databases()
+        return {
+            "success": True,
+            "databases": databases,
+            "count": len(databases)
+        }
+    except Exception as e:
+        logger.exception(f"Error getting available databases: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "databases": []
+        }

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Rekordbox Browser - Music Organizer</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <style>
         * {
             margin: 0;
@@ -276,6 +277,70 @@
             <p>Explora tu colección de Rekordbox - Carpetas y Playlists</p>
         </div>
 
+        <div style="max-width: 1400px; margin: 0 auto 20px; padding: 0 20px;">
+            <div style="background: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                <label style="font-weight: 600; color: #333; white-space: nowrap;">📁 Base de datos:</label>
+                <select 
+                    id="db-selector" 
+                    style="flex: 1; min-width: 300px; padding: 10px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; background: white; cursor: pointer; outline: none; transition: border-color 0.2s;"
+                    onchange="changeDatabase(this.value)"
+                    onfocus="this.style.borderColor='#667eea'"
+                    onblur="this.style.borderColor='#e0e0e0'"
+                >
+                    <option value="">Cargando bases de datos...</option>
+                </select>
+                <button 
+                    onclick="toggleCustomPathInput()" 
+                    style="padding: 10px 20px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; white-space: nowrap;"
+                    onmouseover="this.style.background='#38a169'"
+                    onmouseout="this.style.background='#48bb78'"
+                >
+                    📂 Ruta personalizada
+                </button>
+                <button 
+                    onclick="refreshDatabases()" 
+                    style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s;"
+                    onmouseover="this.style.background='#5568d3'"
+                    onmouseout="this.style.background='#667eea'"
+                >
+                    🔄 Actualizar
+                </button>
+            </div>
+            <div id="custom-path-container" style="display: none; margin-top: 15px; padding: 15px 20px; background: #f8f9fa; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <label style="display: block; font-weight: 600; color: #333; margin-bottom: 10px;">Ingresa la ruta completa del archivo master.db:</label>
+                <div style="display: flex; gap: 10px;">
+                    <input 
+                        type="text" 
+                        id="custom-path-input" 
+                        placeholder="Ej: G:\PIONEER\Master\master.db"
+                        style="flex: 1; padding: 10px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; outline: none;"
+                        onfocus="this.style.borderColor='#667eea'"
+                        onblur="this.style.borderColor='#e0e0e0'"
+                        onkeypress="if(event.key==='Enter') loadCustomDatabase()"
+                    />
+                    <button 
+                        onclick="loadCustomDatabase()" 
+                        style="padding: 10px 20px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; white-space: nowrap;"
+                        onmouseover="this.style.background='#38a169'"
+                        onmouseout="this.style.background='#48bb78'"
+                    >
+                        ✓ Cargar
+                    </button>
+                    <button 
+                        onclick="toggleCustomPathInput()" 
+                        style="padding: 10px 20px; background: #e53e3e; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s;"
+                        onmouseover="this.style.background='#c53030'"
+                        onmouseout="this.style.background='#e53e3e'"
+                    >
+                        ✕ Cancelar
+                    </button>
+                </div>
+                <small style="display: block; margin-top: 8px; color: #666;">
+                    💡 Ejemplo Windows: <code style="background: white; padding: 2px 6px; border-radius: 3px;">C:\Users\Usuario\AppData\Roaming\Pioneer\rekordbox\master.db</code>
+                </small>
+            </div>
+        </div>
+
         <div class="stats" id="stats">
             <div class="stat-card">
                 <div class="label">Total Tracks</div>
@@ -295,9 +360,22 @@
 
         <div class="content">
             <div class="sidebar" id="sidebar">
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <p>Cargando estructura de Rekordbox...</p>
+                <div style="padding: 15px; border-bottom: 1px solid #e0e0e0; background: white;">
+                    <input 
+                        type="text" 
+                        id="search-input" 
+                        placeholder="🔍 Buscar playlists..." 
+                        style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; outline: none; transition: border-color 0.2s;"
+                        onkeyup="filterPlaylists(this.value)"
+                        onfocus="this.style.borderColor='#667eea'"
+                        onblur="this.style.borderColor='#e0e0e0'"
+                    />
+                </div>
+                <div id="playlist-container">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Cargando estructura de Rekordbox...</p>
+                    </div>
                 </div>
             </div>
 
@@ -317,30 +395,170 @@
         const API_BASE = 'http://localhost:8000/api';
         let treeData = null;
         let expandedFolders = new Set();
+        let currentDbPath = null;
+        let availableDatabases = [];
 
         // Load initial data
         async function init() {
+            await loadAvailableDatabases();
+        }
+
+        async function loadAvailableDatabases() {
             try {
+                const response = await fetch(`${API_BASE}/rekordbox/databases`);
+                const data = await response.json();
+                
+                if (data.success && data.databases && data.databases.length > 0) {
+                    availableDatabases = data.databases;
+                    populateDatabaseSelector();
+                    
+                    // Load the default database
+                    const defaultDb = data.databases.find(db => db.is_default) || data.databases[0];
+                    currentDbPath = defaultDb.path;
+                    await loadDatabaseData();
+                } else {
+                    // No databases found, try default
+                    await loadDatabaseData();
+                }
+            } catch (error) {
+                console.error('Error loading databases:', error);
+                // Fallback to default
+                await loadDatabaseData();
+            }
+        }
+
+        function populateDatabaseSelector() {
+            const selector = document.getElementById('db-selector');
+            selector.innerHTML = '';
+            
+            availableDatabases.forEach(db => {
+                const option = document.createElement('option');
+                option.value = db.path;
+                option.textContent = db.name;
+                if (db.is_default) {
+                    option.selected = true;
+                }
+                selector.appendChild(option);
+            });
+        }
+
+        async function changeDatabase(dbPath) {
+            if (!dbPath || dbPath === currentDbPath) return;
+            
+            currentDbPath = dbPath;
+            
+            // Clear current data
+            document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos...</p></div>';
+            document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Selecciona una playlist</h3><p>Haz clic en una playlist de la izquierda para ver sus tracks</p></div>';
+            
+            // Load new database
+            await loadDatabaseData();
+        }
+
+        async function refreshDatabases() {
+            await loadAvailableDatabases();
+        }
+
+        function toggleCustomPathInput() {
+            const container = document.getElementById('custom-path-container');
+            const input = document.getElementById('custom-path-input');
+            
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                input.focus();
+            } else {
+                container.style.display = 'none';
+                input.value = '';
+            }
+        }
+
+        async function loadCustomDatabase() {
+            const input = document.getElementById('custom-path-input');
+            const customPath = input.value.trim();
+            
+            if (!customPath) {
+                alert('Por favor ingresa una ruta válida');
+                return;
+            }
+            
+            // Validate file extension
+            if (!customPath.toLowerCase().endsWith('.db')) {
+                alert('Por favor ingresa una ruta que termine en .db');
+                return;
+            }
+            
+            // Extract filename from path
+            const fileName = customPath.split(/[\\\/]/).pop();
+            
+            // Add to available databases if not already there
+            const existingDb = availableDatabases.find(db => db.path === customPath);
+            if (!existingDb) {
+                availableDatabases.push({
+                    path: customPath,
+                    name: `${fileName} (Personalizada)`,
+                    version: 'custom',
+                    is_default: false
+                });
+                populateDatabaseSelector();
+            }
+            
+            // Select and load the database
+            currentDbPath = customPath;
+            document.getElementById('db-selector').value = customPath;
+            
+            // Hide the custom path input
+            toggleCustomPathInput();
+            
+            // Show loading message
+            document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos personalizada...</p></div>';
+            document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Cargando...</h3></div>';
+            
+            // Load the database
+            await loadDatabaseData();
+        }
+
+        async function loadDatabaseData() {
+            try {
+                // Build query params if we have a specific database path
+                const queryParams = currentDbPath ? `?db_path=${encodeURIComponent(currentDbPath)}` : '';
+                
                 // Load stats
-                const statsResponse = await fetch(`${API_BASE}/rekordbox/stats`);
+                const statsResponse = await fetch(`${API_BASE}/rekordbox/stats${queryParams}`);
                 const stats = await statsResponse.json();
                 
-                if (stats.success) {
-                    document.getElementById('stat-tracks').textContent = stats.total_tracks.toLocaleString();
-                    document.getElementById('stat-playlists').textContent = stats.total_playlists.toLocaleString();
-                    document.getElementById('stat-folders').textContent = stats.total_folders.toLocaleString();
-                    
-                    // Show DB path
+                if (stats.error) {
+                    showError(stats);
+                    return;
+                }
+                
+                // Update stats display
+                document.getElementById('stat-tracks').textContent = stats.total_tracks || 0;
+                document.getElementById('stat-playlists').textContent = stats.total_playlists || 0;
+                document.getElementById('stat-folders').textContent = stats.total_folders || 0;
+                
+                // Show DB path
+                if (stats.db_path) {
                     const dbPathContainer = document.getElementById('db-path-container');
-                    dbPathContainer.innerHTML = `<div class="db-path">📁 Database: ${stats.db_path}</div>`;
+                    dbPathContainer.innerHTML = `
+                        <div style="max-width: 1400px; margin: 0 auto 20px; padding: 0 20px;">
+                            <div style="background: #f8f9fa; padding: 10px 15px; border-radius: 6px; font-size: 0.9rem; color: #666;">
+                                📁 Database: <code style="background: white; padding: 2px 8px; border-radius: 3px; color: #333;">${stats.db_path}</code>
+                            </div>
+                        </div>
+                    `;
                 }
 
                 // Load tree
-                const treeResponse = await fetch(`${API_BASE}/rekordbox/tree`);
+                const treeResponse = await fetch(`${API_BASE}/rekordbox/tree${queryParams}`);
                 const treeResult = await treeResponse.json();
                 
                 if (treeResult.error) {
                     showError(treeResult);
+                    return;
+                }
+
+                if (!treeResult.tree) {
+                    showError({ error: 'Invalid response', message: 'No tree data received from server' });
                     return;
                 }
 
@@ -354,18 +572,29 @@
 
         function showError(errorData) {
             const sidebar = document.getElementById('sidebar');
+            const isPyrekordboxError = errorData.message && errorData.message.includes('pyrekordbox');
+            
             sidebar.innerHTML = `
                 <div class="error">
                     <h3>❌ ${errorData.error || 'Error'}</h3>
                     <p>${errorData.message || 'Unknown error occurred'}</p>
                     ${errorData.searched_path ? `<p style="margin-top: 10px;"><small>Searched: ${errorData.searched_path}</small></p>` : ''}
+                    ${isPyrekordboxError ? `
+                        <div style="margin-top: 15px; padding: 15px; background: white; border-radius: 6px; border-left: 4px solid #667eea;">
+                            <strong>📦 Instalación requerida:</strong>
+                            <pre style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px; overflow-x: auto;">pip install pyrekordbox</pre>
+                            <p style="margin-top: 10px; font-size: 0.9rem; color: #666;">
+                                Después de instalar, reinicia el servidor backend.
+                            </p>
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }
 
         function renderTree(items, container = null) {
             if (!container) {
-                container = document.getElementById('sidebar');
+                container = document.getElementById('playlist-container');
                 container.innerHTML = '';
             }
 
@@ -376,7 +605,7 @@
                     const isExpanded = expandedFolders.has(item.id);
                     
                     itemDiv.innerHTML = `
-                        <div class="tree-item folder" data-id="${item.id}" data-type="folder">
+                        <div class="tree-item folder" data-id="${item.id}" data-type="folder" data-name="${item.name}">
                             <span class="toggle-icon ${isExpanded ? 'expanded' : ''}">▶</span>
                             <span class="icon">📁</span>
                             <span>${item.name}</span>
@@ -398,11 +627,13 @@
                         }
                     }
                 } else {
+                    const trackCountDisplay = item.track_count > 0 ? `<span class="count">${item.track_count}</span>` : '<span class="count" style="opacity: 0.5;">0</span>';
+                    
                     itemDiv.innerHTML = `
-                        <div class="tree-item playlist" data-id="${item.id}" data-type="playlist">
+                        <div class="tree-item playlist" data-id="${item.id}" data-type="playlist" data-name="${item.name.toLowerCase()}" data-track-count="${item.track_count}">
                             <span class="icon">🎵</span>
                             <span>${item.name}</span>
-                            ${item.track_count > 0 ? `<span class="count">${item.track_count}</span>` : ''}
+                            ${trackCountDisplay}
                         </div>
                     `;
                     
@@ -544,6 +775,68 @@
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
             return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function filterPlaylists(searchTerm) {
+            const term = searchTerm.toLowerCase().trim();
+            const allPlaylists = document.querySelectorAll('.tree-item.playlist');
+            const allFolders = document.querySelectorAll('.tree-item.folder');
+            
+            if (!term) {
+                // Show all items
+                allPlaylists.forEach(pl => {
+                    pl.parentElement.style.display = '';
+                });
+                allFolders.forEach(folder => {
+                    folder.parentElement.style.display = '';
+                });
+                return;
+            }
+            
+            // Filter playlists
+            let visibleCount = 0;
+            allPlaylists.forEach(pl => {
+                const name = pl.getAttribute('data-name') || '';
+                const trackCount = pl.getAttribute('data-track-count') || '0';
+                
+                // Match by name or if searching for "empty" and track count is 0
+                const matchesName = name.includes(term);
+                const matchesEmpty = term === 'empty' && trackCount === '0';
+                const matchesWithTracks = term === 'tracks' && parseInt(trackCount) > 0;
+                
+                if (matchesName || matchesEmpty || matchesWithTracks) {
+                    pl.parentElement.style.display = '';
+                    visibleCount++;
+                } else {
+                    pl.parentElement.style.display = 'none';
+                }
+            });
+            
+            // Hide folders when searching (optional)
+            allFolders.forEach(folder => {
+                folder.parentElement.style.display = 'none';
+            });
+            
+            // Show message if no results
+            if (visibleCount === 0) {
+                const container = document.getElementById('playlist-container');
+                const noResults = document.createElement('div');
+                noResults.id = 'no-results';
+                noResults.style.cssText = 'padding: 20px; text-align: center; color: #999;';
+                noResults.innerHTML = `
+                    <p>No se encontraron playlists</p>
+                    <small>Intenta con otro término de búsqueda</small>
+                `;
+                
+                // Remove previous no-results message
+                const existing = document.getElementById('no-results');
+                if (existing) existing.remove();
+                
+                container.appendChild(noResults);
+            } else {
+                const existing = document.getElementById('no-results');
+                if (existing) existing.remove();
+            }
         }
 
         // Initialize on page load
