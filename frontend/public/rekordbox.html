@@ -625,17 +625,16 @@
                 document.getElementById('stat-playlists').textContent = stats.total_playlists || 0;
                 document.getElementById('stat-folders').textContent = stats.total_folders || 0;
 
-                // Show DB path
-                if (stats.db_path) {
-                    const dbPathContainer = document.getElementById('db-path-container');
-                    dbPathContainer.innerHTML = `
-                        <div style="max-width: 1400px; margin: 0 auto 20px; padding: 0 20px;">
-                            <div style="background: #f8f9fa; padding: 10px 15px; border-radius: 6px; font-size: 0.9rem; color: #666;">
-                                📁 Database: <code style="background: white; padding: 2px 8px; border-radius: 3px; color: #333;">${stats.db_path}</code>
-                            </div>
+                // Show DB path - use currentDbPath to show the currently selected database
+                const displayPath = currentDbPath || stats.db_path || 'Auto-detected';
+                const dbPathContainer = document.getElementById('db-path-container');
+                dbPathContainer.innerHTML = `
+                    <div style="max-width: 1400px; margin: 0 auto 20px; padding: 0 20px;">
+                        <div style="background: #f8f9fa; padding: 10px 15px; border-radius: 6px; font-size: 0.9rem; color: #666;">
+                            📁 Database: <code style="background: white; padding: 2px 8px; border-radius: 3px; color: #333;">${displayPath}</code>
                         </div>
-                    `;
-                }
+                    </div>
+                `;
 
                 // Load tree
                 const treeResponse = await fetch(`${API_BASE}/rekordbox/tree${queryParams}`);
