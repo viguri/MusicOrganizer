@@ -154,10 +154,12 @@ async def browse_directory(
         pass
 
     parent = str(p.parent) if p.parent != p else ""
+    
+    logger.info(f"Browse result for {path}: {len(dirs)} dirs, {len(files)} files (include_files={include_files})")
 
     return {
         "current": str(p),
         "parent": parent,
         "directories": dirs,
-        "files": files if include_files else []
+        "files": files
     }
