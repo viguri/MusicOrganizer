@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -202,8 +203,13 @@
         }
 
         @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
         }
 
         .error {
@@ -270,6 +276,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -278,65 +285,49 @@
         </div>
 
         <div style="max-width: 1400px; margin: 0 auto 20px; padding: 0 20px;">
-            <div style="background: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <div
+                style="background: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                 <label style="font-weight: 600; color: #333; white-space: nowrap;">📁 Base de datos:</label>
-                <select 
-                    id="db-selector" 
+                <select id="db-selector"
                     style="flex: 1; min-width: 300px; padding: 10px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; background: white; cursor: pointer; outline: none; transition: border-color 0.2s;"
-                    onchange="changeDatabase(this.value)"
-                    onfocus="this.style.borderColor='#667eea'"
-                    onblur="this.style.borderColor='#e0e0e0'"
-                >
+                    onchange="changeDatabase(this.value)" onfocus="this.style.borderColor='#667eea'"
+                    onblur="this.style.borderColor='#e0e0e0'">
                     <option value="">Cargando bases de datos...</option>
                 </select>
-                <button 
-                    onclick="toggleCustomPathInput()" 
+                <button onclick="toggleCustomPathInput()"
                     style="padding: 10px 20px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; white-space: nowrap;"
-                    onmouseover="this.style.background='#38a169'"
-                    onmouseout="this.style.background='#48bb78'"
-                >
+                    onmouseover="this.style.background='#38a169'" onmouseout="this.style.background='#48bb78'">
                     📂 Ruta personalizada
                 </button>
-                <button 
-                    onclick="refreshDatabases()" 
+                <button onclick="refreshDatabases()"
                     style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s;"
-                    onmouseover="this.style.background='#5568d3'"
-                    onmouseout="this.style.background='#667eea'"
-                >
+                    onmouseover="this.style.background='#5568d3'" onmouseout="this.style.background='#667eea'">
                     🔄 Actualizar
                 </button>
             </div>
-            <div id="custom-path-container" style="display: none; margin-top: 15px; padding: 15px 20px; background: #f8f9fa; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <label style="display: block; font-weight: 600; color: #333; margin-bottom: 10px;">Ingresa la ruta completa del archivo master.db:</label>
+            <div id="custom-path-container"
+                style="display: none; margin-top: 15px; padding: 15px 20px; background: #f8f9fa; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <label style="display: block; font-weight: 600; color: #333; margin-bottom: 10px;">Ingresa la ruta
+                    completa del archivo master.db:</label>
                 <div style="display: flex; gap: 10px;">
-                    <input 
-                        type="text" 
-                        id="custom-path-input" 
-                        placeholder="Ej: G:\PIONEER\Master\master.db"
+                    <input type="text" id="custom-path-input" placeholder="Ej: G:\PIONEER\Master\master.db"
                         style="flex: 1; padding: 10px 15px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; outline: none;"
-                        onfocus="this.style.borderColor='#667eea'"
-                        onblur="this.style.borderColor='#e0e0e0'"
-                        onkeypress="if(event.key==='Enter') loadCustomDatabase()"
-                    />
-                    <button 
-                        onclick="loadCustomDatabase()" 
+                        onfocus="this.style.borderColor='#667eea'" onblur="this.style.borderColor='#e0e0e0'"
+                        onkeypress="if(event.key==='Enter') loadCustomDatabase()" />
+                    <button onclick="loadCustomDatabase()"
                         style="padding: 10px 20px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; white-space: nowrap;"
-                        onmouseover="this.style.background='#38a169'"
-                        onmouseout="this.style.background='#48bb78'"
-                    >
+                        onmouseover="this.style.background='#38a169'" onmouseout="this.style.background='#48bb78'">
                         ✓ Cargar
                     </button>
-                    <button 
-                        onclick="toggleCustomPathInput()" 
+                    <button onclick="toggleCustomPathInput()"
                         style="padding: 10px 20px; background: #e53e3e; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s;"
-                        onmouseover="this.style.background='#c53030'"
-                        onmouseout="this.style.background='#e53e3e'"
-                    >
+                        onmouseover="this.style.background='#c53030'" onmouseout="this.style.background='#e53e3e'">
                         ✕ Cancelar
                     </button>
                 </div>
                 <small style="display: block; margin-top: 8px; color: #666;">
-                    💡 Ejemplo Windows: <code style="background: white; padding: 2px 6px; border-radius: 3px;">C:\Users\Usuario\AppData\Roaming\Pioneer\rekordbox\master.db</code>
+                    💡 Ejemplo Windows: <code
+                        style="background: white; padding: 2px 6px; border-radius: 3px;">C:\Users\Usuario\AppData\Roaming\Pioneer\rekordbox\master.db</code>
                 </small>
             </div>
         </div>
@@ -361,15 +352,10 @@
         <div class="content">
             <div class="sidebar" id="sidebar">
                 <div style="padding: 15px; border-bottom: 1px solid #e0e0e0; background: white;">
-                    <input 
-                        type="text" 
-                        id="search-input" 
-                        placeholder="🔍 Buscar playlists..." 
+                    <input type="text" id="search-input" placeholder="🔍 Buscar playlists..."
                         style="width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 14px; outline: none; transition: border-color 0.2s;"
-                        onkeyup="filterPlaylists(this.value)"
-                        onfocus="this.style.borderColor='#667eea'"
-                        onblur="this.style.borderColor='#e0e0e0'"
-                    />
+                        onkeyup="filterPlaylists(this.value)" onfocus="this.style.borderColor='#667eea'"
+                        onblur="this.style.borderColor='#e0e0e0'" />
                 </div>
                 <div id="playlist-container">
                     <div class="loading">
@@ -382,7 +368,8 @@
             <div class="main-panel" id="main-panel">
                 <div class="empty-state">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                     </svg>
                     <h3>Selecciona una playlist</h3>
                     <p>Haz clic en una playlist de la izquierda para ver sus tracks</p>
@@ -391,12 +378,44 @@
         </div>
     </div>
 
+    <!-- Audio Player -->
+    <div id="audio-player"
+        style="display: none; position: fixed; bottom: 0; left: 0; right: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 20px; box-shadow: 0 -4px 20px rgba(0,0,0,0.3); z-index: 1000;">
+        <div style="max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 15px;">
+            <button id="play-pause-btn" onclick="togglePlayPause()"
+                style="background: white; color: #667eea; border: none; padding: 10px 15px; border-radius: 50%; cursor: pointer; font-size: 1.2em; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center;">▶️</button>
+
+            <div style="flex: 1;">
+                <div id="now-playing-title" style="font-weight: bold; margin-bottom: 5px;">No track playing</div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span id="current-time" style="font-size: 0.9em;">0:00</span>
+                    <input type="range" id="progress-bar" min="0" max="100" value="0" style="flex: 1; cursor: pointer;"
+                        oninput="seekAudio(this.value)">
+                    <span id="total-time" style="font-size: 0.9em;">0:00</span>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 0.9em;">🔊</span>
+                <input type="range" id="volume-control" min="0" max="100" value="80"
+                    style="width: 100px; cursor: pointer;" oninput="changeVolume(this.value)">
+            </div>
+
+            <button onclick="closePlayer()"
+                style="background: rgba(255,255,255,0.2); color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">✕</button>
+        </div>
+    </div>
+
+    <audio id="audio-element" preload="metadata"></audio>
+
     <script>
         const API_BASE = 'http://localhost:8000/api';
         let treeData = null;
         let expandedFolders = new Set();
         let currentDbPath = null;
         let availableDatabases = [];
+        let currentAudio = null;
+        let currentTrackIndex = -1;
 
         // Load initial data
         async function init() {
@@ -407,11 +426,11 @@
             try {
                 const response = await fetch(`${API_BASE}/rekordbox/databases`);
                 const data = await response.json();
-                
+
                 if (data.success && data.databases && data.databases.length > 0) {
                     availableDatabases = data.databases;
                     populateDatabaseSelector();
-                    
+
                     // Load the default database
                     const defaultDb = data.databases.find(db => db.is_default) || data.databases[0];
                     currentDbPath = defaultDb.path;
@@ -430,7 +449,7 @@
         function populateDatabaseSelector() {
             const selector = document.getElementById('db-selector');
             selector.innerHTML = '';
-            
+
             availableDatabases.forEach(db => {
                 const option = document.createElement('option');
                 option.value = db.path;
@@ -444,13 +463,13 @@
 
         async function changeDatabase(dbPath) {
             if (!dbPath || dbPath === currentDbPath) return;
-            
+
             currentDbPath = dbPath;
-            
+
             // Clear current data
             document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos...</p></div>';
             document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Selecciona una playlist</h3><p>Haz clic en una playlist de la izquierda para ver sus tracks</p></div>';
-            
+
             // Load new database
             await loadDatabaseData();
         }
@@ -462,7 +481,7 @@
         function toggleCustomPathInput() {
             const container = document.getElementById('custom-path-container');
             const input = document.getElementById('custom-path-input');
-            
+
             if (container.style.display === 'none') {
                 container.style.display = 'block';
                 input.focus();
@@ -475,21 +494,21 @@
         async function loadCustomDatabase() {
             const input = document.getElementById('custom-path-input');
             const customPath = input.value.trim();
-            
+
             if (!customPath) {
                 alert('Por favor ingresa una ruta válida');
                 return;
             }
-            
+
             // Validate file extension
             if (!customPath.toLowerCase().endsWith('.db')) {
                 alert('Por favor ingresa una ruta que termine en .db');
                 return;
             }
-            
+
             // Extract filename from path
             const fileName = customPath.split(/[\\\/]/).pop();
-            
+
             // Add to available databases if not already there
             const existingDb = availableDatabases.find(db => db.path === customPath);
             if (!existingDb) {
@@ -501,18 +520,18 @@
                 });
                 populateDatabaseSelector();
             }
-            
+
             // Select and load the database
             currentDbPath = customPath;
             document.getElementById('db-selector').value = customPath;
-            
+
             // Hide the custom path input
             toggleCustomPathInput();
-            
+
             // Show loading message
             document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos personalizada...</p></div>';
             document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Cargando...</h3></div>';
-            
+
             // Load the database
             await loadDatabaseData();
         }
@@ -521,21 +540,21 @@
             try {
                 // Build query params if we have a specific database path
                 const queryParams = currentDbPath ? `?db_path=${encodeURIComponent(currentDbPath)}` : '';
-                
+
                 // Load stats
                 const statsResponse = await fetch(`${API_BASE}/rekordbox/stats${queryParams}`);
                 const stats = await statsResponse.json();
-                
+
                 if (stats.error) {
                     showError(stats);
                     return;
                 }
-                
+
                 // Update stats display
                 document.getElementById('stat-tracks').textContent = stats.total_tracks || 0;
                 document.getElementById('stat-playlists').textContent = stats.total_playlists || 0;
                 document.getElementById('stat-folders').textContent = stats.total_folders || 0;
-                
+
                 // Show DB path
                 if (stats.db_path) {
                     const dbPathContainer = document.getElementById('db-path-container');
@@ -551,7 +570,7 @@
                 // Load tree
                 const treeResponse = await fetch(`${API_BASE}/rekordbox/tree${queryParams}`);
                 const treeResult = await treeResponse.json();
-                
+
                 if (treeResult.error) {
                     showError(treeResult);
                     return;
@@ -573,7 +592,7 @@
         function showError(errorData) {
             const sidebar = document.getElementById('sidebar');
             const isPyrekordboxError = errorData.message && errorData.message.includes('pyrekordbox');
-            
+
             sidebar.innerHTML = `
                 <div class="error">
                     <h3>❌ ${errorData.error || 'Error'}</h3>
@@ -600,10 +619,10 @@
 
             items.forEach(item => {
                 const itemDiv = document.createElement('div');
-                
+
                 if (item.is_folder) {
                     const isExpanded = expandedFolders.has(item.id);
-                    
+
                     itemDiv.innerHTML = `
                         <div class="tree-item folder" data-id="${item.id}" data-type="folder" data-name="${item.name}">
                             <span class="toggle-icon ${isExpanded ? 'expanded' : ''}">▶</span>
@@ -613,7 +632,7 @@
                         </div>
                         <div class="tree-children" style="display: ${isExpanded ? 'block' : 'none'}"></div>
                     `;
-                    
+
                     const folderElement = itemDiv.querySelector('.tree-item');
                     folderElement.addEventListener('click', (e) => {
                         e.stopPropagation();
@@ -628,7 +647,7 @@
                     }
                 } else {
                     const trackCountDisplay = item.track_count > 0 ? `<span class="count">${item.track_count}</span>` : '<span class="count" style="opacity: 0.5;">0</span>';
-                    
+
                     itemDiv.innerHTML = `
                         <div class="tree-item playlist" data-id="${item.id}" data-type="playlist" data-name="${item.name.toLowerCase()}" data-track-count="${item.track_count}">
                             <span class="icon">🎵</span>
@@ -636,11 +655,11 @@
                             ${trackCountDisplay}
                         </div>
                     `;
-                    
+
                     const playlistElement = itemDiv.querySelector('.tree-item');
                     playlistElement.addEventListener('click', () => {
                         loadPlaylist(item.id, item.name);
-                        
+
                         // Update active state
                         document.querySelectorAll('.tree-item.playlist').forEach(el => el.classList.remove('active'));
                         playlistElement.classList.add('active');
@@ -654,7 +673,7 @@
         function toggleFolder(folderId, itemDiv) {
             const childrenContainer = itemDiv.querySelector('.tree-children');
             const toggleIcon = itemDiv.querySelector('.toggle-icon');
-            
+
             if (expandedFolders.has(folderId)) {
                 expandedFolders.delete(folderId);
                 childrenContainer.style.display = 'none';
@@ -663,7 +682,7 @@
                 expandedFolders.add(folderId);
                 childrenContainer.style.display = 'block';
                 toggleIcon.classList.add('expanded');
-                
+
                 // Render children if not already rendered
                 if (childrenContainer.children.length === 0) {
                     const folder = findItemById(treeData, folderId);
@@ -712,7 +731,7 @@
 
         function renderTracks(tracks, playlistName, trackCount) {
             const mainPanel = document.getElementById('main-panel');
-            
+
             if (tracks.length === 0) {
                 mainPanel.innerHTML = `
                     <div class="playlist-header">
@@ -723,15 +742,52 @@
                 return;
             }
 
+            // Count tracks by location
+            const locationCounts = {
+                local: tracks.filter(t => t.location_status === 'local').length,
+                cloud: tracks.filter(t => t.location_status === 'cloud').length,
+                both: tracks.filter(t => t.location_status === 'both').length,
+                missing: tracks.filter(t => t.location_status === 'missing').length,
+                unknown: tracks.filter(t => !t.location_status || t.location_status === 'unknown').length
+            };
+
             let html = `
                 <div class="playlist-header">
                     <h2>${playlistName}</h2>
                     <div class="meta">${trackCount} track${trackCount !== 1 ? 's' : ''}</div>
+                    
+                    <div style="margin-top: 15px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <span style="font-weight: 500; margin-right: 8px;">Filtrar por ubicación:</span>
+                        <button onclick="filterTracksByLocation('all')" class="location-filter-btn active" data-filter="all" style="background: #6b7280; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                            Todos (${trackCount})
+                        </button>
+                        ${locationCounts.local > 0 ? `
+                        <button onclick="filterTracksByLocation('local')" class="location-filter-btn" data-filter="local" style="background: #10b981; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                            💾 Local (${locationCounts.local})
+                        </button>
+                        ` : ''}
+                        ${locationCounts.cloud > 0 ? `
+                        <button onclick="filterTracksByLocation('cloud')" class="location-filter-btn" data-filter="cloud" style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                            ☁️ Cloud (${locationCounts.cloud})
+                        </button>
+                        ` : ''}
+                        ${locationCounts.both > 0 ? `
+                        <button onclick="filterTracksByLocation('both')" class="location-filter-btn" data-filter="both" style="background: #8b5cf6; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                            💾☁️ Both (${locationCounts.both})
+                        </button>
+                        ` : ''}
+                        ${locationCounts.missing > 0 ? `
+                        <button onclick="filterTracksByLocation('missing')" class="location-filter-btn" data-filter="missing" style="background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9em;">
+                            ❌ Missing (${locationCounts.missing})
+                        </button>
+                        ` : ''}
+                    </div>
                 </div>
                 <table class="track-list">
                     <thead>
                         <tr>
                             <th>#</th>
+                            <th>Play</th>
                             <th>Title</th>
                             <th>Artist</th>
                             <th>Album</th>
@@ -739,6 +795,7 @@
                             <th>BPM</th>
                             <th>Key</th>
                             <th>Duration</th>
+                            <th>Location</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -747,10 +804,46 @@
             tracks.forEach((track, index) => {
                 const duration = track.duration ? formatDuration(track.duration) : '-';
                 const bpm = track.bpm ? Math.round(track.bpm) : '-';
-                
+
+                // Location badge
+                let locationBadge = '';
+                let locationTitle = '';
+                switch (track.location_status) {
+                    case 'local':
+                        locationBadge = '<span style="background: #10b981; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">💾 Local</span>';
+                        locationTitle = 'File exists locally';
+                        break;
+                    case 'cloud':
+                        locationBadge = '<span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">☁️ Cloud</span>';
+                        locationTitle = 'File only in cloud (Dropbox/iCloud)';
+                        break;
+                    case 'both':
+                        locationBadge = '<span style="background: #8b5cf6; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">💾☁️ Both</span>';
+                        locationTitle = 'File synced locally from cloud';
+                        break;
+                    case 'missing':
+                        locationBadge = '<span style="background: #ef4444; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">❌ Missing</span>';
+                        locationTitle = 'File not found';
+                        break;
+                    default:
+                        locationBadge = '<span style="background: #6b7280; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">❓ Unknown</span>';
+                        locationTitle = 'Location unknown';
+                }
+
+                // Play button - only show if file exists locally
+                let playButton = '';
+                if (track.file_exists && track.file_path) {
+                    playButton = `<button onclick="playTrack('${track.file_path.replace(/'/g, "\\'")}', '${(track.title || 'Unknown').replace(/'/g, "\\'")}', '${(track.artist || 'Unknown').replace(/'/g, "\\'")}', ${index})" style="background: #10b981; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" title="Play track">▶️</button>`;
+                } else if (track.location_status === 'cloud') {
+                    playButton = `<span style="color: #9ca3af; font-size: 0.85em;" title="File only in cloud - not available for playback">☁️</span>`;
+                } else {
+                    playButton = `<span style="color: #9ca3af; font-size: 0.85em;" title="File not available">-</span>`;
+                }
+
                 html += `
-                    <tr>
+                    <tr data-location-status="${track.location_status || 'unknown'}">
                         <td>${index + 1}</td>
+                        <td style="text-align: center;">${playButton}</td>
                         <td><strong>${track.title || 'Unknown'}</strong></td>
                         <td>${track.artist || 'Unknown'}</td>
                         <td>${track.album || '-'}</td>
@@ -758,6 +851,7 @@
                         <td>${bpm}</td>
                         <td>${track.key || '-'}</td>
                         <td>${duration}</td>
+                        <td title="${locationTitle}">${locationBadge}</td>
                     </tr>
                 `;
             });
@@ -770,6 +864,39 @@
             mainPanel.innerHTML = html;
         }
 
+        function filterTracksByLocation(filter) {
+            const allRows = document.querySelectorAll('.track-list tbody tr');
+            const filterButtons = document.querySelectorAll('.location-filter-btn');
+
+            // Update active button
+            filterButtons.forEach(btn => {
+                if (btn.dataset.filter === filter) {
+                    btn.classList.add('active');
+                    btn.style.opacity = '1';
+                    btn.style.fontWeight = 'bold';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.opacity = '0.7';
+                    btn.style.fontWeight = 'normal';
+                }
+            });
+
+            // Filter rows
+            let visibleCount = 0;
+            allRows.forEach((row, index) => {
+                const locationStatus = row.dataset.locationStatus;
+
+                if (filter === 'all' || locationStatus === filter) {
+                    row.style.display = '';
+                    visibleCount++;
+                    // Update row number
+                    row.querySelector('td:first-child').textContent = visibleCount;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
         function formatDuration(seconds) {
             if (!seconds) return '-';
             const mins = Math.floor(seconds / 60);
@@ -777,11 +904,105 @@
             return `${mins}:${secs.toString().padStart(2, '0')}`;
         }
 
+        // Audio Player Functions
+        function playTrack(filePath, title, artist, trackIndex) {
+            const audioElement = document.getElementById('audio-element');
+            const audioPlayer = document.getElementById('audio-player');
+            const nowPlayingTitle = document.getElementById('now-playing-title');
+            const playPauseBtn = document.getElementById('play-pause-btn');
+
+            // Build stream URL
+            const streamUrl = `${API_BASE}/rekordbox/stream?file_path=${encodeURIComponent(filePath)}`;
+
+            // Update current track
+            currentTrackIndex = trackIndex;
+
+            // Set audio source
+            audioElement.src = streamUrl;
+            audioElement.volume = document.getElementById('volume-control').value / 100;
+
+            // Update UI
+            nowPlayingTitle.textContent = `${title} - ${artist}`;
+            audioPlayer.style.display = 'block';
+            playPauseBtn.textContent = '⏸️';
+
+            // Play audio
+            audioElement.play().catch(err => {
+                console.error('Error playing audio:', err);
+                alert('Error al reproducir el archivo. Verifica que el archivo existe y es accesible.');
+            });
+
+            // Highlight current playing track
+            document.querySelectorAll('.track-list tbody tr').forEach((row, idx) => {
+                if (idx === trackIndex) {
+                    row.style.background = '#f0fdf4';
+                } else {
+                    row.style.background = '';
+                }
+            });
+        }
+
+        function togglePlayPause() {
+            const audioElement = document.getElementById('audio-element');
+            const playPauseBtn = document.getElementById('play-pause-btn');
+
+            if (audioElement.paused) {
+                audioElement.play();
+                playPauseBtn.textContent = '⏸️';
+            } else {
+                audioElement.pause();
+                playPauseBtn.textContent = '▶️';
+            }
+        }
+
+        function seekAudio(value) {
+            const audioElement = document.getElementById('audio-element');
+            const seekTime = (value / 100) * audioElement.duration;
+            audioElement.currentTime = seekTime;
+        }
+
+        function changeVolume(value) {
+            const audioElement = document.getElementById('audio-element');
+            audioElement.volume = value / 100;
+        }
+
+        function closePlayer() {
+            const audioElement = document.getElementById('audio-element');
+            const audioPlayer = document.getElementById('audio-player');
+
+            audioElement.pause();
+            audioElement.src = '';
+            audioPlayer.style.display = 'none';
+
+            // Remove highlight from tracks
+            document.querySelectorAll('.track-list tbody tr').forEach(row => {
+                row.style.background = '';
+            });
+        }
+
+        // Update progress bar and time
+        document.getElementById('audio-element').addEventListener('timeupdate', function () {
+            const currentTime = this.currentTime;
+            const duration = this.duration;
+
+            if (duration) {
+                const progress = (currentTime / duration) * 100;
+                document.getElementById('progress-bar').value = progress;
+                document.getElementById('current-time').textContent = formatDuration(currentTime);
+                document.getElementById('total-time').textContent = formatDuration(duration);
+            }
+        });
+
+        // Handle audio end
+        document.getElementById('audio-element').addEventListener('ended', function () {
+            document.getElementById('play-pause-btn').textContent = '▶️';
+        });
+
         function filterPlaylists(searchTerm) {
             const term = searchTerm.toLowerCase().trim();
             const allPlaylists = document.querySelectorAll('.tree-item.playlist');
             const allFolders = document.querySelectorAll('.tree-item.folder');
-            
+
             if (!term) {
                 // Show all items
                 allPlaylists.forEach(pl => {
@@ -792,18 +1013,18 @@
                 });
                 return;
             }
-            
+
             // Filter playlists
             let visibleCount = 0;
             allPlaylists.forEach(pl => {
                 const name = pl.getAttribute('data-name') || '';
                 const trackCount = pl.getAttribute('data-track-count') || '0';
-                
+
                 // Match by name or if searching for "empty" and track count is 0
                 const matchesName = name.includes(term);
                 const matchesEmpty = term === 'empty' && trackCount === '0';
                 const matchesWithTracks = term === 'tracks' && parseInt(trackCount) > 0;
-                
+
                 if (matchesName || matchesEmpty || matchesWithTracks) {
                     pl.parentElement.style.display = '';
                     visibleCount++;
@@ -811,12 +1032,12 @@
                     pl.parentElement.style.display = 'none';
                 }
             });
-            
+
             // Hide folders when searching (optional)
             allFolders.forEach(folder => {
                 folder.parentElement.style.display = 'none';
             });
-            
+
             // Show message if no results
             if (visibleCount === 0) {
                 const container = document.getElementById('playlist-container');
@@ -827,11 +1048,11 @@
                     <p>No se encontraron playlists</p>
                     <small>Intenta con otro término de búsqueda</small>
                 `;
-                
+
                 // Remove previous no-results message
                 const existing = document.getElementById('no-results');
                 if (existing) existing.remove();
-                
+
                 container.appendChild(noResults);
             } else {
                 const existing = document.getElementById('no-results');
@@ -843,4 +1064,5 @@
         init();
     </script>
 </body>
+
 </html>

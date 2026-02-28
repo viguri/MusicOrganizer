@@ -173,22 +173,50 @@ def get_playlist_tree(db_path: Optional[str] = None) -> Dict:
                 break
             
             try:
-                playlist_id = pl.ID if hasattr(pl, 'ID') else None
-                playlist_name = pl.Name if hasattr(pl, 'Name') and pl.Name else f"Playlist {playlist_id}"
+                # Keep ID as string for consistent comparison
+                playlist_id = str(pl.ID) if hasattr(pl, 'ID') else None
+                
+                # Get playlist name - handle None values
+                playlist_name = None
+                has_real_name = False
+                if hasattr(pl, 'Name') and pl.Name:
+                    playlist_name = str(pl.Name).strip()
+                    has_real_name = True
+                
+                # Determine if it's a folder using the is_folder attribute
+                is_folder = False
+                if hasattr(pl, 'is_folder'):
+                    is_folder = pl.is_folder
+                elif hasattr(pl, 'Kind'):
+                    is_folder = pl.Kind == 0
                 
                 # Count tracks in playlist
                 track_count = 0
                 try:
-                    if hasattr(pl, 'Tracks') and pl.Tracks:
-                        track_count = len(list(pl.Tracks))
+                    if hasattr(pl, 'Songs') and pl.Songs:
+                        track_count = len(list(pl.Songs))
                 except:
                     track_count = 0
+                
+                # Skip playlists without name and without tracks (unless it's a folder)
+                if not has_real_name and not is_folder and track_count == 0:
+                    continue
+                
+                # If no name, use ID as fallback (only for items we're keeping)
+                if not playlist_name:
+                    playlist_name = f"Playlist {playlist_id}"
+                
+                # Get parent ID - keep as string for consistent comparison
+                parent_id = None
+                if hasattr(pl, 'ParentID'):
+                    if pl.ParentID and pl.ParentID != 'root':
+                        parent_id = str(pl.ParentID)
                 
                 playlists.append({
                     "id": playlist_id,
                     "name": playlist_name,
-                    "parent_id": pl.ParentID if hasattr(pl, 'ParentID') else None,
-                    "is_folder": pl.Kind == 0 if hasattr(pl, 'Kind') else False,
+                    "parent_id": parent_id,
+                    "is_folder": is_folder,
                     "track_count": track_count
                 })
                 count += 1
@@ -284,26 +312,72 @@ def get_playlist_tracks(playlist_id: int, db_path: Optional[str] = None) -> Dict
                 "message": f"Playlist with ID {playlist_id} not found. Available IDs: {len(found_ids)}"
             }
         
-        # Get tracks
+        # Get tracks using Songs (not Tracks)
         tracks = []
-        if hasattr(playlist, 'Tracks'):
-            for track in playlist.Tracks:
-                tracks.append({
-                    "id": track.ID if hasattr(track, 'ID') else None,
-                    "title": track.Title if hasattr(track, 'Title') else "Unknown",
-                    "artist": track.Artist if hasattr(track, 'Artist') else "Unknown",
-                    "album": track.Album if hasattr(track, 'Album') else "",
-                    "genre": track.Genre if hasattr(track, 'Genre') else "",
-                    "bpm": track.BPM if hasattr(track, 'BPM') else None,
-                    "key": track.Key if hasattr(track, 'Key') else "",
-                    "duration": track.Duration if hasattr(track, 'Duration') else None,
-                    "file_path": track.FilePath if hasattr(track, 'FilePath') else ""
-                })
+        if hasattr(playlist, 'Songs') and playlist.Songs:
+            for song in playlist.Songs:
+                if hasattr(song, 'Content') and song.Content:
+                    content = song.Content
+                    
+                    artist_name = "Unknown"
+                    if hasattr(content, 'Artist') and content.Artist:
+                        artist_name = content.Artist.Name if hasattr(content.Artist, 'Name') else "Unknown"
+                    
+                    album_name = ""
+                    if hasattr(content, 'Album') and content.Album:
+                        album_name = content.Album.Name if hasattr(content.Album, 'Name') else ""
+                    
+                    genre_name = ""
+                    if hasattr(content, 'Genre') and content.Genre:
+                        genre_name = content.Genre.Name if hasattr(content.Genre, 'Name') else ""
+                    
+                    # Determine track location
+                    file_path = content.FolderPath if hasattr(content, 'FolderPath') else ""
+                    location_status = "unknown"
+                    file_exists = False
+                    
+                    if file_path:
+                        file_path_lower = file_path.lower()
+                        
+                        # Check if it's a cloud path
+                        is_cloud = any(keyword in file_path_lower for keyword in ['dropbox', 'icloud', 'onedrive', 'google drive', 'cloud'])
+                        
+                        # Check if file exists physically
+                        try:
+                            from pathlib import Path
+                            file_exists = Path(file_path).exists()
+                        except:
+                            file_exists = False
+                        
+                        # Determine location status
+                        if is_cloud and file_exists:
+                            location_status = "both"  # Synced to local from cloud
+                        elif is_cloud:
+                            location_status = "cloud"  # Only in cloud
+                        elif file_exists:
+                            location_status = "local"  # Only local
+                        else:
+                            location_status = "missing"  # File not found
+                    
+                    tracks.append({
+                        "id": content.ID if hasattr(content, 'ID') else None,
+                        "title": content.Title if hasattr(content, 'Title') else "Unknown",
+                        "artist": artist_name,
+                        "album": album_name,
+                        "genre": genre_name,
+                        "bpm": content.BPM if hasattr(content, 'BPM') else None,
+                        "key": content.Key if hasattr(content, 'Key') else "",
+                        "duration": content.Duration if hasattr(content, 'Duration') else None,
+                        "file_path": file_path,
+                        "track_no": song.TrackNo if hasattr(song, 'TrackNo') else None,
+                        "location_status": location_status,
+                        "file_exists": file_exists
+                    })
         
         return {
             "success": True,
             "playlist_id": playlist_id,
-            "playlist_name": playlist.Name if hasattr(playlist, 'Name') else "Unknown",
+            "playlist_name": playlist.Name if hasattr(playlist, 'Name') else f"Playlist {playlist_id}",
             "tracks": tracks,
             "track_count": len(tracks)
         }
@@ -316,7 +390,7 @@ def get_playlist_tracks(playlist_id: int, db_path: Optional[str] = None) -> Dict
         }
 
 
-def get_rekordbox_stats(db_path: Optional[str] = None) -> Dict:
+def get_rekordbox_stats(db_path: Optional[str] = None, limit_tracks: bool = True) -> Dict:
     """Get statistics about the Rekordbox library."""
     if not PYREKORDBOX_AVAILABLE:
         return {
@@ -342,7 +416,7 @@ def get_rekordbox_stats(db_path: Optional[str] = None) -> Dict:
         total_tracks = 0
         for _ in content_query:
             total_tracks += 1
-            if total_tracks >= 10000:  # Limit for performance
+            if limit_tracks and total_tracks >= 10000:
                 logger.info(f"Reached limit of 10000 tracks")
                 break
         
@@ -358,13 +432,19 @@ def get_rekordbox_stats(db_path: Optional[str] = None) -> Dict:
         count = 0
         
         for p in playlist_query:
-            if count >= 1000:  # Limit for performance
+            if count >= 1000:
                 break
-            if hasattr(p, 'Kind'):
-                if p.Kind == 0:
-                    total_folders += 1
-                else:
-                    total_playlists += 1
+            
+            is_folder = False
+            if hasattr(p, 'is_folder'):
+                is_folder = p.is_folder
+            elif hasattr(p, 'Kind'):
+                is_folder = p.Kind == 0
+            
+            if is_folder:
+                total_folders += 1
+            else:
+                total_playlists += 1
             count += 1
         
         logger.info(f"Step 9: Counted {total_playlists} playlists and {total_folders} folders")

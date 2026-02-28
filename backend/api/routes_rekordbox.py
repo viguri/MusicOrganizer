@@ -2,7 +2,9 @@
 
 import logging
 from typing import Optional
+from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend.modules.rekordbox_reader import (
@@ -53,10 +55,13 @@ async def api_get_playlist_tracks(
 
 
 @router.get("/stats")
-async def api_get_rekordbox_stats(db_path: Optional[str] = Query(None)):
+async def api_get_rekordbox_stats(
+    db_path: Optional[str] = Query(None),
+    limit_tracks: bool = Query(True, description="Limit track count to 10,000 for performance")
+):
     """Get statistics about the Rekordbox library."""
     try:
-        result = get_rekordbox_stats(db_path)
+        result = get_rekordbox_stats(db_path, limit_tracks)
         return result
     except Exception as e:
         logger.exception(f"Error getting Rekordbox stats: {e}")
@@ -105,3 +110,33 @@ async def api_get_available_databases():
             "error": str(e),
             "databases": []
         }
+
+
+@router.get("/stream")
+async def stream_audio_file(file_path: str = Query(..., description="Absolute path to the audio file")):
+    """Stream an audio file for playback."""
+    try:
+        audio_file = Path(file_path)
+        
+        if not audio_file.exists():
+            raise HTTPException(status_code=404, detail="Audio file not found")
+        
+        if not audio_file.is_file():
+            raise HTTPException(status_code=400, detail="Path is not a file")
+        
+        # Check if it's an audio file by extension
+        audio_extensions = {'.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg', '.wma', '.aiff', '.alac'}
+        if audio_file.suffix.lower() not in audio_extensions:
+            raise HTTPException(status_code=400, detail="Not a supported audio file")
+        
+        return FileResponse(
+            path=str(audio_file),
+            media_type='audio/mpeg',
+            filename=audio_file.name
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error streaming audio file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
