@@ -108,17 +108,21 @@ async def update_label_mapping(request: UpdateLabelMappingRequest):
 
 
 @router.get("/browse")
-async def browse_directory(path: str = Query("", description="Directory path to browse. Empty returns drives/root.")):
+async def browse_directory(
+    path: str = Query("", description="Directory path to browse. Empty returns drives/root."),
+    include_files: bool = Query(False, description="Include files in the response (filtered by extension)")
+):
     """Browse filesystem directories for the folder picker dialog.
 
     Returns the current path, parent path, and list of subdirectories.
     When path is empty, returns available drives (Windows) or root (Unix).
+    If include_files is True, also returns .db files in the current directory.
     """
     # If no path provided, return drives (Windows) or root (Unix)
     if not path or path.strip() == "":
         if sys.platform == "win32":
             drives = _list_windows_drives()
-            return {"current": "", "parent": "", "directories": drives}
+            return {"current": "", "parent": "", "directories": drives, "files": []}
         else:
             path = "/"
 
@@ -128,6 +132,7 @@ async def browse_directory(path: str = Query("", description="Directory path to 
 
     # List subdirectories (skip hidden and system folders)
     dirs = []
+    files = []
     try:
         for entry in sorted(p.iterdir()):
             if entry.is_dir():
@@ -135,6 +140,11 @@ async def browse_directory(path: str = Query("", description="Directory path to 
                 if name.startswith(".") or name == "$RECYCLE.BIN" or name == "System Volume Information":
                     continue
                 dirs.append({"name": name, "path": str(entry)})
+            elif include_files and entry.is_file():
+                name = entry.name
+                # Only include .db files
+                if name.lower().endswith('.db'):
+                    files.append({"name": name, "path": str(entry)})
     except PermissionError:
         pass
 
@@ -144,4 +154,5 @@ async def browse_directory(path: str = Query("", description="Directory path to 
         "current": str(p),
         "parent": parent,
         "directories": dirs,
+        "files": files if include_files else []
     }

@@ -423,6 +423,14 @@
         let availableDatabases = [];
         let currentAudio = null;
         let currentTrackIndex = -1;
+        
+        // File browser state
+        let browserOpen = false;
+        let browserCurrentPath = '';
+        let browserParentPath = '';
+        let browserDirs = [];
+        let browserFiles = [];
+        let browserLoading = false;
 
         // Load initial data
         async function init() {
@@ -597,86 +605,160 @@
         }
 
         async function openFilePicker() {
+            browserOpen = true;
+            renderFileBrowser();
+            
+            // Start browsing from last selected path or default Rekordbox location
+            const startPath = currentDbPath ? currentDbPath.substring(0, currentDbPath.lastIndexOf('\\')) : 
+                             'C:\\Users\\Usuario\\AppData\\Roaming\\Pioneer\\rekordbox';
+            await browseDirectory(startPath);
+        }
+
+        async function browseDirectory(path) {
+            browserLoading = true;
+            renderFileBrowser();
+            
             try {
-                // Check if the File System Access API is supported
-                if (!window.showOpenFilePicker) {
-                    alert('Tu navegador no soporta la selección avanzada de archivos.\n\nPor favor usa el botón "✏️ Ruta manual" para ingresar la ruta completa del archivo.\n\nO usa un navegador moderno como Chrome, Edge o Brave.');
-                    return;
-                }
-
-                // Open file picker dialog
-                const [fileHandle] = await window.showOpenFilePicker({
-                    types: [
-                        {
-                            description: 'Rekordbox Database',
-                            accept: {
-                                'application/x-sqlite3': ['.db']
-                            }
-                        }
-                    ],
-                    multiple: false
-                });
-
-                // Get the file
-                const file = await fileHandle.getFile();
-                const fileName = file.name;
-
-                // Validate file extension
-                if (!fileName.toLowerCase().endsWith('.db')) {
-                    alert('Por favor selecciona un archivo .db válido');
-                    return;
-                }
-
-                // Try to get the full path from the file handle
-                // Note: This might not work in all browsers due to security restrictions
-                let filePath = '';
+                const response = await fetch(`${API_BASE}/settings/browse?path=${encodeURIComponent(path)}&include_files=true`);
+                const data = await response.json();
                 
-                // Try different methods to get the path
-                if (fileHandle.name) {
-                    // Use a prompt to ask the user for the full path
-                    filePath = prompt(
-                        `Archivo seleccionado: ${fileName}\n\nPara poder acceder al archivo, necesitamos la ruta completa.\nPor favor, copia y pega la ruta completa del archivo:`,
-                        `C:\\Users\\Usuario\\AppData\\Roaming\\Pioneer\\rekordbox\\${fileName}`
-                    );
-                    
-                    if (!filePath) {
-                        return; // User cancelled
-                    }
-                } else {
-                    // Fallback
-                    filePath = `C:\\Users\\Usuario\\AppData\\Roaming\\Pioneer\\rekordbox\\${fileName}`;
-                }
-
-                // Add to available databases
-                const existingDb = availableDatabases.find(db => db.path === filePath);
-                if (!existingDb) {
-                    availableDatabases.push({
-                        path: filePath,
-                        name: `${fileName} (Seleccionado)`,
-                        version: 'custom',
-                        is_default: false
-                    });
-                    populateDatabaseSelector();
-                }
-
-                // Select and load the database
-                currentDbPath = filePath;
-                document.getElementById('db-selector').value = filePath;
-
-                // Show loading message
-                document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos seleccionada...</p></div>';
-                document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Cargando...</h3></div>';
-
-                // Load the database
-                await loadDatabaseData();
-
+                browserCurrentPath = data.current;
+                browserParentPath = data.parent;
+                browserDirs = data.directories || [];
+                browserFiles = data.files || [];
+                browserLoading = false;
+                renderFileBrowser();
             } catch (error) {
-                // User cancelled or error occurred
-                if (error.name !== 'AbortError') {
-                    console.error('Error al seleccionar archivo:', error);
-                    alert('Error al seleccionar el archivo. Por favor intenta de nuevo o usa "✏️ Ruta manual".');
-                }
+                console.error('Error browsing directory:', error);
+                browserLoading = false;
+                alert('Error al navegar el directorio. Intenta con otra ruta.');
+                renderFileBrowser();
             }
+        }
+
+        function selectFile(filePath) {
+            const fileName = filePath.split(/[\\\/]/).pop();
+            
+            // Add to available databases
+            const existingDb = availableDatabases.find(db => db.path === filePath);
+            if (!existingDb) {
+                availableDatabases.push({
+                    path: filePath,
+                    name: `${fileName} (Seleccionado)`,
+                    version: 'custom',
+                    is_default: false
+                });
+                populateDatabaseSelector();
+            }
+
+            // Select and load the database
+            currentDbPath = filePath;
+            document.getElementById('db-selector').value = filePath;
+            
+            // Close browser
+            browserOpen = false;
+            document.getElementById('file-browser-modal').remove();
+
+            // Show loading message
+            document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos seleccionada...</p></div>';
+            document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Cargando...</h3></div>';
+
+            // Load the database
+            loadDatabaseData();
+        }
+
+        function renderFileBrowser() {
+            // Remove existing modal if any
+            const existing = document.getElementById('file-browser-modal');
+            if (existing) existing.remove();
+
+            if (!browserOpen) return;
+
+            const modal = document.createElement('div');
+            modal.id = 'file-browser-modal';
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 9999;';
+            
+            const dialog = document.createElement('div');
+            dialog.style.cssText = 'background: white; border-radius: 12px; width: 90%; max-width: 600px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.3);';
+            
+            dialog.innerHTML = `
+                <div style="padding: 20px; border-bottom: 1px solid #e0e0e0;">
+                    <h3 style="margin: 0; font-size: 1.2rem; color: #333;">📂 Seleccionar Base de Datos</h3>
+                </div>
+                
+                <div style="padding: 15px; background: #f8f9fa; border-bottom: 1px solid #e0e0e0;">
+                    <div style="font-family: monospace; font-size: 0.9rem; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        ${browserCurrentPath || 'Selecciona una unidad...'}
+                    </div>
+                </div>
+                
+                <div style="flex: 1; overflow-y: auto; min-height: 300px; max-height: 400px;">
+                    ${browserLoading ? `
+                        <div style="display: flex; align-items: center; justify-content: center; padding: 60px; color: #999;">
+                            Cargando...
+                        </div>
+                    ` : `
+                        ${browserParentPath !== '' ? `
+                            <div onclick="browseDirectory('${browserParentPath.replace(/\\/g, '\\\\')}')" 
+                                 style="padding: 12px 20px; border-bottom: 1px solid #e0e0e0; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.2s;"
+                                 onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+                                <span style="font-size: 1.2rem;">⬆️</span>
+                                <span style="color: #666;">..</span>
+                            </div>
+                        ` : ''}
+                        ${browserCurrentPath && !browserParentPath ? `
+                            <div onclick="browseDirectory('')" 
+                                 style="padding: 12px 20px; border-bottom: 1px solid #e0e0e0; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.2s;"
+                                 onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+                                <span style="font-size: 1.2rem;">⬆️</span>
+                                <span style="color: #666;">Volver a unidades</span>
+                            </div>
+                        ` : ''}
+                        ${browserDirs.map(dir => `
+                            <div ondblclick="browseDirectory('${dir.path.replace(/\\/g, '\\\\')}')" 
+                                 style="padding: 12px 20px; border-bottom: 1px solid #e0e0e0; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.2s;"
+                                 onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
+                                <span style="font-size: 1.2rem;">📁</span>
+                                <span>${dir.name}</span>
+                            </div>
+                        `).join('')}
+                        ${browserFiles.map(file => `
+                            <div onclick="selectFile('${file.path.replace(/\\/g, '\\\\')}')" 
+                                 style="padding: 12px 20px; border-bottom: 1px solid #e0e0e0; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.2s; background: #f0f9ff;"
+                                 onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#f0f9ff'">
+                                <span style="font-size: 1.2rem;">💾</span>
+                                <span style="font-weight: 600; color: #2563eb;">${file.name}</span>
+                            </div>
+                        `).join('')}
+                        ${browserDirs.length === 0 && browserFiles.length === 0 && !browserLoading ? `
+                            <div style="display: flex; align-items: center; justify-content: center; padding: 60px; color: #999;">
+                                No hay carpetas ni archivos .db aquí
+                            </div>
+                        ` : ''}
+                    `}
+                </div>
+                
+                <div style="padding: 15px; background: #f8f9fa; border-top: 1px solid #e0e0e0; font-size: 0.85rem; color: #666;">
+                    💡 Haz doble clic en una carpeta para abrirla, clic simple en un archivo .db para seleccionarlo
+                </div>
+                
+                <div style="padding: 15px; border-top: 1px solid #e0e0e0; display: flex; justify-content: flex-end; gap: 10px;">
+                    <button onclick="browserOpen = false; document.getElementById('file-browser-modal').remove();"
+                            style="padding: 10px 20px; background: #e0e0e0; color: #333; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                        Cancelar
+                    </button>
+                </div>
+            `;
+            
+            modal.appendChild(dialog);
+            document.body.appendChild(modal);
+            
+            // Close on background click
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                }
+            });
         }
 
         async function loadDatabaseData() {
