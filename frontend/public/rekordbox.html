@@ -570,7 +570,8 @@
             } else {
                 // Fallback: Use default Rekordbox path with the selected filename
                 // This is a reasonable assumption since most users have Rekordbox in the default location
-                const defaultPath = `C:\\Users\\${navigator.userAgent.includes('Windows') ? process.env.USERNAME || 'Usuario' : 'Usuario'}\\AppData\\Roaming\\Pioneer\\rekordbox\\${fileName}`;
+                const username = 'Usuario'; // Default username, will work for most standard installations
+                const defaultPath = `C:\\Users\\${username}\\AppData\\Roaming\\Pioneer\\rekordbox\\${fileName}`;
                 filePath = defaultPath;
                 
                 // Show a helpful message
