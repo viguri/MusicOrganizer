@@ -205,8 +205,14 @@ def get_playlist_tree(db_path: Optional[str] = None) -> Dict:
                 # Get parent ID - keep as string for consistent comparison
                 parent_id = None
                 if hasattr(pl, 'ParentID'):
-                    if pl.ParentID and pl.ParentID != 'root':
-                        parent_id = str(pl.ParentID)
+                    raw_parent = pl.ParentID
+                    # Log first few items to debug
+                    if count < 20:
+                        logger.info(f"Playlist '{playlist_name}' (ID={playlist_id}): ParentID={raw_parent}, is_folder={is_folder}")
+                    
+                    # Only set parent_id if it's a valid reference (not None, not 0, not 'root')
+                    if raw_parent and raw_parent != 'root' and raw_parent != 0:
+                        parent_id = str(raw_parent)
                 
                 playlists.append({
                     "id": playlist_id,
