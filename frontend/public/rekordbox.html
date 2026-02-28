@@ -559,28 +559,24 @@
                 return;
             }
 
-            // Get the file path - browsers provide limited access for security
-            // We'll use the webkitRelativePath or construct from File API
+            const fileName = file.name;
             let filePath = '';
             
-            // Try to get full path (only works in some browsers/contexts)
+            // Try to get full path (only works in Electron or some specific contexts)
             if (file.path) {
                 filePath = file.path;
             } else if (file.webkitRelativePath) {
                 filePath = file.webkitRelativePath;
             } else {
-                // Fallback: ask user to provide the full path
-                filePath = prompt(
-                    `Archivo seleccionado: ${file.name}\n\nPor razones de seguridad del navegador, necesitamos la ruta completa.\nPor favor, ingresa la ruta completa del archivo:`,
-                    `C:\\Users\\Usuario\\AppData\\Roaming\\Pioneer\\rekordbox\\${file.name}`
-                );
+                // Fallback: Use default Rekordbox path with the selected filename
+                // This is a reasonable assumption since most users have Rekordbox in the default location
+                const defaultPath = `C:\\Users\\${navigator.userAgent.includes('Windows') ? process.env.USERNAME || 'Usuario' : 'Usuario'}\\AppData\\Roaming\\Pioneer\\rekordbox\\${fileName}`;
+                filePath = defaultPath;
                 
-                if (!filePath) {
-                    return; // User cancelled
-                }
+                // Show a helpful message
+                console.log(`Usando ruta predeterminada: ${filePath}`);
+                console.log('Si tu base de datos está en otra ubicación, usa el botón "✏️ Ruta manual"');
             }
-
-            const fileName = file.name;
 
             // Add to available databases if not already there
             const existingDb = availableDatabases.find(db => db.path === filePath);
