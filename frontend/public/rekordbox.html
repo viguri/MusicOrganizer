@@ -294,11 +294,25 @@
                     onblur="this.style.borderColor='#e0e0e0'">
                     <option value="">Cargando bases de datos...</option>
                 </select>
-                <button onclick="toggleCustomPathInput()"
+                <button onclick="document.getElementById('db-file-picker').click()"
                     style="padding: 10px 20px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; white-space: nowrap;"
-                    onmouseover="this.style.background='#38a169'" onmouseout="this.style.background='#48bb78'">
-                    📂 Ruta personalizada
+                    onmouseover="this.style.background='#38a169'" onmouseout="this.style.background='#48bb78'"
+                    title="Seleccionar archivo master.db">
+                    📂 Seleccionar archivo
                 </button>
+                <button onclick="toggleCustomPathInput()"
+                    style="padding: 10px 20px; background: #8b5cf6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; white-space: nowrap;"
+                    onmouseover="this.style.background='#7c3aed'" onmouseout="this.style.background='#8b5cf6'"
+                    title="Ingresar ruta manualmente">
+                    ✏️ Ruta manual
+                </button>
+                <input 
+                    type="file" 
+                    id="db-file-picker" 
+                    accept=".db" 
+                    style="display: none;"
+                    onchange="handleFilePicker(this.files[0])"
+                />
                 <button onclick="refreshDatabases()"
                     style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s;"
                     onmouseover="this.style.background='#5568d3'" onmouseout="this.style.background='#667eea'">
@@ -530,6 +544,62 @@
 
             // Show loading message
             document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos personalizada...</p></div>';
+            document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Cargando...</h3></div>';
+
+            // Load the database
+            await loadDatabaseData();
+        }
+
+        async function handleFilePicker(file) {
+            if (!file) return;
+
+            // Validate file extension
+            if (!file.name.toLowerCase().endsWith('.db')) {
+                alert('Por favor selecciona un archivo .db válido');
+                return;
+            }
+
+            // Get the file path - browsers provide limited access for security
+            // We'll use the webkitRelativePath or construct from File API
+            let filePath = '';
+            
+            // Try to get full path (only works in some browsers/contexts)
+            if (file.path) {
+                filePath = file.path;
+            } else if (file.webkitRelativePath) {
+                filePath = file.webkitRelativePath;
+            } else {
+                // Fallback: ask user to provide the full path
+                filePath = prompt(
+                    `Archivo seleccionado: ${file.name}\n\nPor razones de seguridad del navegador, necesitamos la ruta completa.\nPor favor, ingresa la ruta completa del archivo:`,
+                    `C:\\Users\\Usuario\\AppData\\Roaming\\Pioneer\\rekordbox\\${file.name}`
+                );
+                
+                if (!filePath) {
+                    return; // User cancelled
+                }
+            }
+
+            const fileName = file.name;
+
+            // Add to available databases if not already there
+            const existingDb = availableDatabases.find(db => db.path === filePath);
+            if (!existingDb) {
+                availableDatabases.push({
+                    path: filePath,
+                    name: `${fileName} (Seleccionado)`,
+                    version: 'custom',
+                    is_default: false
+                });
+                populateDatabaseSelector();
+            }
+
+            // Select and load the database
+            currentDbPath = filePath;
+            document.getElementById('db-selector').value = filePath;
+
+            // Show loading message
+            document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos seleccionada...</p></div>';
             document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Cargando...</h3></div>';
 
             // Load the database
