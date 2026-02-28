@@ -57,7 +57,7 @@ async def api_get_playlist_tracks(
 @router.get("/stats")
 async def api_get_rekordbox_stats(
     db_path: Optional[str] = Query(None),
-    limit_tracks: bool = Query(True, description="Limit track count to 10,000 for performance")
+    limit_tracks: bool = Query(False, description="Limit track count to 10,000 for performance")
 ):
     """Get statistics about the Rekordbox library."""
     try:

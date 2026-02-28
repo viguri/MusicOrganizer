@@ -698,8 +698,8 @@
                             Cargando...
                         </div>
                     ` : `
-                        ${browserParentPath !== '' ? `
-                            <div onclick="browseDirectory('${browserParentPath.replace(/\\/g, '\\\\')}')" 
+                        ${browserParentPath && browserParentPath !== '' ? `
+                            <div onclick="browseDirectory('${(browserParentPath || '').replace(/\\/g, '\\\\')}')" 
                                  style="padding: 12px 20px; border-bottom: 1px solid #e0e0e0; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.2s;"
                                  onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='white'">
                                 <span style="font-size: 1.2rem;">⬆️</span>

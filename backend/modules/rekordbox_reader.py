@@ -165,12 +165,8 @@ def get_playlist_tree(db_path: Optional[str] = None) -> Dict:
         logger.info("Step 5: Playlist query obtained, iterating...")
         
         count = 0
-        max_items = 1000  # Increased limit for full collection
         
         for pl in playlist_query:
-            if count >= max_items:
-                logger.info(f"Reached max playlist limit of {max_items}")
-                break
             
             try:
                 # Keep ID as string for consistent comparison
@@ -261,6 +257,21 @@ def build_tree(playlists: List[Dict]) -> List[Dict]:
             root_items.append(items_by_id[item["id"]])
         elif parent_id in items_by_id:
             items_by_id[parent_id]["children"].append(items_by_id[item["id"]])
+    
+    # Sort function: folders first, then playlists, both alphabetically by name
+    def sort_key(item):
+        # Folders (is_folder=True) come first (0), playlists second (1)
+        # Then sort alphabetically by name (case-insensitive)
+        return (0 if item.get("is_folder") else 1, item.get("name", "").lower())
+    
+    # Recursively sort all levels
+    def sort_tree(items):
+        items.sort(key=sort_key)
+        for item in items:
+            if item.get("children"):
+                sort_tree(item["children"])
+    
+    sort_tree(root_items)
     
     return root_items
 
@@ -429,12 +440,8 @@ def get_rekordbox_stats(db_path: Optional[str] = None, limit_tracks: bool = True
         
         total_playlists = 0
         total_folders = 0
-        count = 0
         
         for p in playlist_query:
-            if count >= 1000:
-                break
-            
             is_folder = False
             if hasattr(p, 'is_folder'):
                 is_folder = p.is_folder
@@ -445,7 +452,6 @@ def get_rekordbox_stats(db_path: Optional[str] = None, limit_tracks: bool = True
                 total_folders += 1
             else:
                 total_playlists += 1
-            count += 1
         
         logger.info(f"Step 9: Counted {total_playlists} playlists and {total_folders} folders")
         logger.info("=== Rekordbox stats retrieval completed successfully ===")
