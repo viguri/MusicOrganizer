@@ -142,10 +142,15 @@ async def browse_directory(
                 dirs.append({"name": name, "path": str(entry)})
             elif include_files and entry.is_file():
                 name = entry.name
-                # Only include .db files
+                # Only include .db files (case insensitive)
                 if name.lower().endswith('.db'):
                     files.append({"name": name, "path": str(entry)})
+                    logger.info(f"Found .db file: {name} at {entry}")
     except PermissionError:
+        logger.warning(f"Permission denied accessing: {p}")
+        pass
+    except Exception as e:
+        logger.error(f"Error listing directory {p}: {e}")
         pass
 
     parent = str(p.parent) if p.parent != p else ""
