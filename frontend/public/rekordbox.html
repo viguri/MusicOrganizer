@@ -294,10 +294,10 @@
                     onblur="this.style.borderColor='#e0e0e0'">
                     <option value="">Cargando bases de datos...</option>
                 </select>
-                <button onclick="document.getElementById('db-file-picker').click()"
+                <button onclick="openFilePicker()"
                     style="padding: 10px 20px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; white-space: nowrap;"
                     onmouseover="this.style.background='#38a169'" onmouseout="this.style.background='#48bb78'"
-                    title="Seleccionar archivo master.db">
+                    title="Seleccionar archivo master.db desde tu PC">
                     📂 Seleccionar archivo
                 </button>
                 <button onclick="toggleCustomPathInput()"
@@ -306,13 +306,6 @@
                     title="Ingresar ruta manualmente">
                     ✏️ Ruta manual
                 </button>
-                <input 
-                    type="file" 
-                    id="db-file-picker" 
-                    accept=".db" 
-                    style="display: none;"
-                    onchange="handleFilePicker(this.files[0])"
-                />
                 <button onclick="refreshDatabases()"
                     style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s;"
                     onmouseover="this.style.background='#5568d3'" onmouseout="this.style.background='#667eea'">
@@ -601,6 +594,89 @@
 
             // Load the database
             await loadDatabaseData();
+        }
+
+        async function openFilePicker() {
+            try {
+                // Check if the File System Access API is supported
+                if (!window.showOpenFilePicker) {
+                    alert('Tu navegador no soporta la selección avanzada de archivos.\n\nPor favor usa el botón "✏️ Ruta manual" para ingresar la ruta completa del archivo.\n\nO usa un navegador moderno como Chrome, Edge o Brave.');
+                    return;
+                }
+
+                // Open file picker dialog
+                const [fileHandle] = await window.showOpenFilePicker({
+                    types: [
+                        {
+                            description: 'Rekordbox Database',
+                            accept: {
+                                'application/x-sqlite3': ['.db']
+                            }
+                        }
+                    ],
+                    multiple: false
+                });
+
+                // Get the file
+                const file = await fileHandle.getFile();
+                const fileName = file.name;
+
+                // Validate file extension
+                if (!fileName.toLowerCase().endsWith('.db')) {
+                    alert('Por favor selecciona un archivo .db válido');
+                    return;
+                }
+
+                // Try to get the full path from the file handle
+                // Note: This might not work in all browsers due to security restrictions
+                let filePath = '';
+                
+                // Try different methods to get the path
+                if (fileHandle.name) {
+                    // Use a prompt to ask the user for the full path
+                    filePath = prompt(
+                        `Archivo seleccionado: ${fileName}\n\nPara poder acceder al archivo, necesitamos la ruta completa.\nPor favor, copia y pega la ruta completa del archivo:`,
+                        `C:\\Users\\Usuario\\AppData\\Roaming\\Pioneer\\rekordbox\\${fileName}`
+                    );
+                    
+                    if (!filePath) {
+                        return; // User cancelled
+                    }
+                } else {
+                    // Fallback
+                    filePath = `C:\\Users\\Usuario\\AppData\\Roaming\\Pioneer\\rekordbox\\${fileName}`;
+                }
+
+                // Add to available databases
+                const existingDb = availableDatabases.find(db => db.path === filePath);
+                if (!existingDb) {
+                    availableDatabases.push({
+                        path: filePath,
+                        name: `${fileName} (Seleccionado)`,
+                        version: 'custom',
+                        is_default: false
+                    });
+                    populateDatabaseSelector();
+                }
+
+                // Select and load the database
+                currentDbPath = filePath;
+                document.getElementById('db-selector').value = filePath;
+
+                // Show loading message
+                document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos seleccionada...</p></div>';
+                document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Cargando...</h3></div>';
+
+                // Load the database
+                await loadDatabaseData();
+
+            } catch (error) {
+                // User cancelled or error occurred
+                if (error.name !== 'AbortError') {
+                    console.error('Error al seleccionar archivo:', error);
+                    alert('Error al seleccionar el archivo. Por favor intenta de nuevo o usa "✏️ Ruta manual".');
+                }
+            }
         }
 
         async function loadDatabaseData() {
