@@ -79,6 +79,16 @@ def get_available_databases() -> List[Dict]:
         return databases
     
     try:
+        # First, check for G:\PIONEER\Master\master.db (preferred default)
+        g_drive_path = Path('G:\\PIONEER\\Master\\master.db')
+        if g_drive_path.exists():
+            databases.append({
+                "path": str(g_drive_path),
+                "name": "master.db (G: Drive)",
+                "version": "custom",
+                "is_default": True
+            })
+        
         from pyrekordbox.config import get_config
         
         # Try Rekordbox 7
@@ -89,9 +99,9 @@ def get_available_databases() -> List[Dict]:
                 if db_path.exists():
                     databases.append({
                         "path": str(db_path),
-                        "name": "Rekordbox 7 (Default)",
+                        "name": "Rekordbox 7",
                         "version": "7",
-                        "is_default": True
+                        "is_default": False  # G: drive is now default
                     })
         except Exception:
             pass
@@ -106,7 +116,7 @@ def get_available_databases() -> List[Dict]:
                         "path": str(db_path),
                         "name": "Rekordbox 6",
                         "version": "6",
-                        "is_default": len(databases) == 0
+                        "is_default": False  # G: drive is now default
                     })
         except Exception:
             pass
@@ -151,11 +161,18 @@ def get_playlist_tree(db_path: Optional[str] = None) -> Dict:
         logger.info("=== Starting Rekordbox playlist tree retrieval ===")
         logger.info("Step 1: Creating Rekordbox6Database instance...")
         
-        db = Rekordbox6Database()
+        # Use provided path or find default
+        if db_path:
+            db_file = Path(db_path)
+            logger.info(f"Using provided database path: {db_file}")
+        else:
+            db_file = get_rekordbox_db_path()
+            logger.info(f"Using auto-detected database path: {db_file}")
+        
+        db = Rekordbox6Database(path=str(db_file) if db_file else None)
         logger.info("Step 2: Database instance created successfully")
         
-        db_path_used = get_rekordbox_db_path()
-        db_path_str = str(db_path_used) if db_path_used else "Auto-detected"
+        db_path_str = str(db_file) if db_file else "Auto-detected"
         logger.info(f"Step 3: Database path: {db_path_str}")
         
         # Get all playlists
@@ -207,12 +224,14 @@ def get_playlist_tree(db_path: Optional[str] = None) -> Dict:
                 if hasattr(pl, 'ParentID'):
                     raw_parent = pl.ParentID
                     # Log first few items to debug
-                    if count < 20:
+                    if count < 100:
                         logger.info(f"Playlist '{playlist_name}' (ID={playlist_id}): ParentID={raw_parent}, is_folder={is_folder}")
                     
-                    # Only set parent_id if it's a valid reference (not None, not 0, not 'root')
+                    # ParentID='root' means root level (parent_id=None)
+                    # ParentID=<number> means it has a parent folder
                     if raw_parent and raw_parent != 'root' and raw_parent != 0:
                         parent_id = str(raw_parent)
+                    # If ParentID is 'root', 0, or None, leave parent_id as None (root level)
                 
                 playlists.append({
                     "id": playlist_id,
@@ -231,16 +250,31 @@ def get_playlist_tree(db_path: Optional[str] = None) -> Dict:
         # Build tree structure
         logger.info("Step 7: Building tree structure...")
         tree = build_tree(playlists)
-        logger.info("Step 8: Tree structure built successfully")
+        logger.info(f"Step 8: Tree structure built successfully - {len(tree)} root items from {len(playlists)} total playlists")
+        
+        # Log first root item to verify structure
+        if tree and len(tree) > 0:
+            first_item = tree[0]
+            logger.info(f"First root item: name='{first_item['name']}', is_folder={first_item['is_folder']}, children_count={len(first_item.get('children', []))}")
+            if first_item.get('children'):
+                logger.info(f"  First child: {first_item['children'][0]['name']}")
+                logger.info(f"  First child full data: {first_item['children'][0]}")
+        
         logger.info("=== Rekordbox playlist tree retrieval completed ===")
         
-        return {
+        result = {
             "success": True,
             "db_path": db_path_str,
             "tree": tree,
             "total_playlists": len([p for p in playlists if not p["is_folder"]]),
             "total_folders": len([p for p in playlists if p["is_folder"]])
         }
+        
+        # Log what we're about to return
+        logger.info(f"Returning tree with {len(tree)} root items")
+        logger.info(f"First item in result has {len(result['tree'][0].get('children', []))} children")
+        
+        return result
         
     except Exception as e:
         logger.exception(f"Error reading Rekordbox database: {e}")
@@ -250,19 +284,76 @@ def get_playlist_tree(db_path: Optional[str] = None) -> Dict:
         }
 
 
+def should_filter_playlist(item: Dict) -> bool:
+    """Determine if a playlist should be filtered out."""
+    name = item.get("name", "").lower()
+    is_folder = item.get("is_folder", False)
+    track_count = item.get("track_count", 0)
+    
+    # Don't filter folders - we'll handle empty folders separately
+    if is_folder:
+        return False
+    
+    # Filter playlists with 0 tracks
+    if track_count == 0:
+        return True
+    
+    # Filter playlists with generic/system names
+    generic_names = [
+        "cue analysis playlist",
+        "untitled playlist",
+        "delete",
+        "borrar",
+        "duplicated",
+        "-----",
+        "collection hq",
+    ]
+    
+    for generic in generic_names:
+        if generic in name:
+            return True
+    
+    return False
+
+
 def build_tree(playlists: List[Dict]) -> List[Dict]:
     """Build hierarchical tree from flat playlist list."""
-    # Create lookup dict
-    items_by_id = {item["id"]: {**item, "children": []} for item in playlists}
+    import copy
+    
+    # Filter out unwanted playlists
+    filtered_playlists = [p for p in playlists if not should_filter_playlist(p)]
+    logger.info(f"Filtered {len(playlists) - len(filtered_playlists)} playlists, keeping {len(filtered_playlists)}")
+    
+    # Create lookup dict with deep copies to avoid reference issues
+    items_by_id = {}
+    for item in filtered_playlists:
+        items_by_id[item["id"]] = {
+            "id": item["id"],
+            "name": item["name"],
+            "parent_id": item.get("parent_id"),
+            "is_folder": item["is_folder"],
+            "track_count": item["track_count"],
+            "children": []
+        }
     
     # Build tree
     root_items = []
-    for item in playlists:
+    orphaned_items = []
+    
+    for item in filtered_playlists:
         parent_id = item.get("parent_id")
-        if parent_id is None or parent_id == 0:
+        if parent_id is None or parent_id == 0 or parent_id == '0':
             root_items.append(items_by_id[item["id"]])
         elif parent_id in items_by_id:
             items_by_id[parent_id]["children"].append(items_by_id[item["id"]])
+        else:
+            # Parent not found - this item is orphaned (parent was filtered out)
+            orphaned_items.append({"name": item["name"], "parent_id": parent_id, "id": item["id"]})
+    
+    if orphaned_items:
+        logger.warning(f"Found {len(orphaned_items)} orphaned items (parent not in tree)")
+        for orphan in orphaned_items[:5]:  # Log first 5
+            logger.warning(f"  Orphaned: '{orphan['name']}' (ID={orphan['id']}) has parent_id={orphan['parent_id']}")
     
     # Sort function: folders first, then playlists, both alphabetically by name
     def sort_key(item):
@@ -277,7 +368,25 @@ def build_tree(playlists: List[Dict]) -> List[Dict]:
             if item.get("children"):
                 sort_tree(item["children"])
     
+    # Filter empty folders recursively
+    def filter_empty_folders(items):
+        """Remove folders that have no children after filtering."""
+        filtered = []
+        for item in items:
+            if item.get("is_folder"):
+                # Recursively filter children first
+                if item.get("children"):
+                    item["children"] = filter_empty_folders(item["children"])
+                # Keep folder only if it has children
+                if item.get("children"):
+                    filtered.append(item)
+            else:
+                # Keep all non-folder items (playlists)
+                filtered.append(item)
+        return filtered
+    
     sort_tree(root_items)
+    root_items = filter_empty_folders(root_items)
     
     return root_items
 
@@ -418,11 +527,18 @@ def get_rekordbox_stats(db_path: Optional[str] = None, limit_tracks: bool = True
         logger.info("=== Starting Rekordbox stats retrieval ===")
         logger.info("Step 1: Creating Rekordbox6Database instance...")
         
-        db = Rekordbox6Database()
+        # Use provided path or find default
+        if db_path:
+            db_file = Path(db_path)
+            logger.info(f"Using provided database path: {db_file}")
+        else:
+            db_file = get_rekordbox_db_path()
+            logger.info(f"Using auto-detected database path: {db_file}")
+        
+        db = Rekordbox6Database(path=str(db_file) if db_file else None)
         logger.info("Step 2: Database instance created successfully")
         
-        db_path_used = get_rekordbox_db_path()
-        db_path_str = str(db_path_used) if db_path_used else "Auto-detected"
+        db_path_str = str(db_file) if db_file else "Auto-detected"
         logger.info(f"Step 3: Database path: {db_path_str}")
         
         # Try to get content count

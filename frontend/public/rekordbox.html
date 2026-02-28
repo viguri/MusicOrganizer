@@ -294,6 +294,13 @@
                     onblur="this.style.borderColor='#e0e0e0'">
                     <option value="">Cargando bases de datos...</option>
                 </select>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 12px; background: #f0f9ff; border: 2px solid #bae6fd; border-radius: 6px; transition: all 0.2s;"
+                    onmouseover="this.style.background='#e0f2fe'" onmouseout="this.style.background='#f0f9ff'"
+                    title="Usar base de datos de G:\PIONEER\Master\master.db">
+                    <input type="checkbox" id="use-g-drive-db" onchange="toggleGDriveDatabase(this.checked)"
+                        style="width: 18px; height: 18px; cursor: pointer;">
+                    <span style="font-weight: 600; color: #0369a1; white-space: nowrap;">💾 G:\PIONEER\Master</span>
+                </label>
                 <button onclick="openFilePicker()"
                     style="padding: 10px 20px; background: #48bb78; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: background 0.2s; white-space: nowrap;"
                     onmouseover="this.style.background='#38a169'" onmouseout="this.style.background='#48bb78'"
@@ -491,6 +498,44 @@
 
         async function refreshDatabases() {
             await loadAvailableDatabases();
+        }
+
+        async function toggleGDriveDatabase(checked) {
+            const gDrivePath = 'G:\\PIONEER\\Master\\master.db';
+            const checkbox = document.getElementById('use-g-drive-db');
+            
+            if (checked) {
+                // Add to available databases if not already there
+                const existingDb = availableDatabases.find(db => db.path === gDrivePath);
+                if (!existingDb) {
+                    availableDatabases.push({
+                        path: gDrivePath,
+                        name: 'master.db (G: Drive)',
+                        version: 'custom',
+                        is_default: false
+                    });
+                    populateDatabaseSelector();
+                }
+
+                // Select and load the database
+                currentDbPath = gDrivePath;
+                document.getElementById('db-selector').value = gDrivePath;
+
+                // Show loading message
+                document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando base de datos de G: Drive...</p></div>';
+                document.getElementById('main-panel').innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg><h3>Cargando...</h3></div>';
+
+                // Load the database
+                await loadDatabaseData();
+            } else {
+                // Uncheck - go back to default database
+                const defaultDb = availableDatabases.find(db => db.is_default);
+                if (defaultDb) {
+                    currentDbPath = defaultDb.path;
+                    document.getElementById('db-selector').value = defaultDb.path;
+                    await loadDatabaseData();
+                }
+            }
         }
 
         function toggleCustomPathInput() {
@@ -806,6 +851,9 @@
                 }
 
                 treeData = treeResult.tree;
+                console.log('Tree data received from backend:', treeData);
+                console.log('Number of root items:', treeData.length);
+                console.log('First 3 root items:', treeData.slice(0, 3));
                 renderTree(treeData);
 
             } catch (error) {
