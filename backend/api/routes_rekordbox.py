@@ -14,6 +14,10 @@ from backend.modules.rekordbox_reader import (
     get_rekordbox_stats,
     get_available_databases
 )
+from backend.modules.rekordbox_xml_reader import (
+    parse_rekordbox_xml,
+    get_xml_playlist_tracks
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rekordbox", tags=["rekordbox"])
@@ -109,6 +113,37 @@ async def api_get_available_databases():
             "success": False,
             "error": str(e),
             "databases": []
+        }
+
+
+@router.get("/xml/parse")
+async def api_parse_xml(xml_path: str = Query(..., description="Path to Rekordbox XML file")):
+    """Parse a Rekordbox XML export file."""
+    try:
+        result = parse_rekordbox_xml(xml_path)
+        return result
+    except Exception as e:
+        logger.exception(f"Error parsing XML: {e}")
+        return {
+            "error": "Internal error",
+            "message": str(e)
+        }
+
+
+@router.get("/xml/playlist/{playlist_id}/tracks")
+async def api_get_xml_playlist_tracks(
+    playlist_id: str,
+    xml_path: str = Query(..., description="Path to Rekordbox XML file")
+):
+    """Get tracks from a specific playlist in XML."""
+    try:
+        result = get_xml_playlist_tracks(xml_path, playlist_id)
+        return result
+    except Exception as e:
+        logger.exception(f"Error getting XML playlist tracks: {e}")
+        return {
+            "error": "Internal error",
+            "message": str(e)
         }
 
 
