@@ -11,6 +11,8 @@ import {
   Sun,
   Moon,
   Monitor,
+  Music,
+  FileCode,
 } from "lucide-react"
 import { useWebSocket } from "@/hooks/useWebSocket"
 import { useTheme } from "@/hooks/useTheme"
@@ -65,6 +67,28 @@ export default function Layout() {
               {label}
             </NavLink>
           ))}
+          
+          <div className="pt-2 mt-2 border-t">
+            <p className="px-3 py-2 text-xs font-semibold text-muted-foreground">Rekordbox</p>
+            <a
+              href="/rekordbox.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50"
+            >
+              <Music className="h-4 w-4" />
+              Database Browser
+            </a>
+            <a
+              href="/rekordbox-xml.html"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50"
+            >
+              <FileCode className="h-4 w-4" />
+              XML Browser
+            </a>
+          </div>
         </nav>
 
         <div className="p-4 border-t space-y-2">
