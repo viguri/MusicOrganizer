@@ -24,26 +24,35 @@ def parse_rekordbox_xml(xml_path: str) -> Dict:
     """
     try:
         xml_file = Path(xml_path)
+        logger.info(f"=== Starting XML parse for: {xml_path}")
+        
         if not xml_file.exists():
+            logger.error(f"File not found: {xml_path}")
             return {
                 "error": "File not found",
                 "message": f"XML file not found: {xml_path}"
             }
         
-        logger.info(f"Parsing Rekordbox XML: {xml_path}")
+        file_size = xml_file.stat().st_size / (1024 * 1024)  # MB
+        logger.info(f"File size: {file_size:.2f} MB")
         
+        logger.info("Parsing XML file...")
         # Parse XML
         tree = ET.parse(xml_file)
         root = tree.getroot()
+        logger.info("XML parsed successfully")
         
         # Get DJ_PLAYLISTS node
+        logger.info("Looking for PLAYLISTS node...")
         playlists_node = root.find('.//PLAYLISTS')
         if playlists_node is None:
+            logger.error("No PLAYLISTS node found")
             return {
                 "error": "Invalid XML",
                 "message": "No PLAYLISTS node found in XML"
             }
         
+        logger.info("Parsing playlist structure...")
         # Parse playlists recursively
         playlists = []
         parse_playlist_node(playlists_node, playlists, parent_id=None)
@@ -56,6 +65,10 @@ def parse_rekordbox_xml(xml_path: str) -> Dict:
         # Count stats
         total_playlists = len([p for p in playlists if p.get("type") == "0"])
         total_folders = len([p for p in playlists if p.get("type") == "1"])
+        
+        logger.info(f"Building tree structure with {len(tree_structure)} root items")
+        logger.info(f"Stats - Playlists: {total_playlists}, Folders: {total_folders}")
+        logger.info("=== XML parse completed successfully")
         
         return {
             "success": True,
@@ -80,8 +93,13 @@ def parse_rekordbox_xml(xml_path: str) -> Dict:
         }
 
 
-def parse_playlist_node(node, playlists: List[Dict], parent_id: Optional[str] = None):
+def parse_playlist_node(node, playlists: List[Dict], parent_id: Optional[str] = None, depth: int = 0):
     """Recursively parse playlist nodes."""
+    # Safety check to prevent infinite recursion
+    if depth > 50:
+        logger.warning(f"Maximum recursion depth reached at depth {depth}")
+        return
+    
     for child in node:
         if child.tag == 'NODE':
             # Get attributes
@@ -89,8 +107,8 @@ def parse_playlist_node(node, playlists: List[Dict], parent_id: Optional[str] = 
             node_type = child.get('Type', '0')  # 0 = playlist, 1 = folder
             key_id = child.get('KeyId', '')
             
-            # Count tracks
-            track_count = len(child.findall('.//TRACK'))
+            # Count only direct TRACK children, not all descendants
+            track_count = len([t for t in child if t.tag == 'TRACK'])
             
             playlist_data = {
                 "id": key_id,
@@ -104,8 +122,8 @@ def parse_playlist_node(node, playlists: List[Dict], parent_id: Optional[str] = 
             
             playlists.append(playlist_data)
             
-            # Recursively parse children
-            parse_playlist_node(child, playlists, parent_id=key_id)
+            # Recursively parse children (only NODE children, not TRACK children)
+            parse_playlist_node(child, playlists, parent_id=key_id, depth=depth + 1)
 
 
 def build_xml_tree(playlists: List[Dict]) -> List[Dict]:
