@@ -300,8 +300,11 @@
         let expandedFolders = new Set();
 
         async function loadXmlFile() {
+            console.log('loadXmlFile called');
             const input = document.getElementById('xml-path-input');
             const xmlPath = input.value.trim();
+            
+            console.log('XML Path:', xmlPath);
             
             if (!xmlPath) {
                 alert('Por favor ingresa la ruta del archivo XML');
@@ -318,10 +321,17 @@
             document.getElementById('playlist-container').innerHTML = '<div class="loading"><div class="spinner"></div><p>Cargando XML de Rekordbox...</p></div>';
             
             try {
-                const response = await fetch(`${API_BASE}/rekordbox/xml/parse?xml_path=${encodeURIComponent(xmlPath)}`);
+                const url = `${API_BASE}/rekordbox/xml/parse?xml_path=${encodeURIComponent(xmlPath)}`;
+                console.log('Fetching:', url);
+                
+                const response = await fetch(url);
+                console.log('Response status:', response.status);
+                
                 const data = await response.json();
+                console.log('Response data:', data);
                 
                 if (data.error) {
+                    console.error('API Error:', data.error, data.message);
                     document.getElementById('playlist-container').innerHTML = `<div class="error"><h3>${data.error}</h3><p>${data.message}</p></div>`;
                     return;
                 }
@@ -341,9 +351,11 @@
                 `;
                 
                 treeData = data.tree;
+                console.log('Tree data:', treeData);
                 renderTree(treeData);
                 
             } catch (error) {
+                console.error('Fetch error:', error);
                 document.getElementById('playlist-container').innerHTML = `<div class="error"><h3>Error de conexión</h3><p>${error.message}</p></div>`;
             }
         }
