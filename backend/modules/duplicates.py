@@ -7,9 +7,20 @@ import re
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
-from backend.config import AUDIO_EXTENSIONS, HASH_CHUNK_SIZE, SCANNER_WORKERS
+from backend.config import (
+    AUDIO_EXTENSIONS,
+    HASH_CHUNK_SIZE,
+    SCANNER_WORKERS,
+    DUPLICATES_QUICK_HASH_BYTES,
+    DUPLICATES_HASH_WORKERS,
+    DUPLICATES_METADATA_WORKERS,
+    DUPLICATES_MAX_WORKERS_CAP,
+    DUPLICATES_STORAGE_MODE,
+    DUPLICATES_METADATA_SIZE_TOLERANCE,
+)
+from backend.modules.database import get_db, get_hash_cache_entries, upsert_hash_cache_entries
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +64,93 @@ def _compute_hash(file_path: str) -> tuple:
         return file_path, f"error:{e}"
 
 
+def _compute_quick_hash(task: Tuple[str, int]) -> tuple:
+    """Compute hash of the first N bytes. Returns (file_path, quick_hash)."""
+    file_path, quick_bytes = task
+    try:
+        h = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            chunk = f.read(max(1, quick_bytes))
+            h.update(chunk)
+        return file_path, h.hexdigest()
+    except Exception as e:
+        return file_path, f"error:{e}"
+
+
+def _extract_metadata_key(file_path: str) -> tuple:
+    """Extract normalized metadata key used for duplicate grouping."""
+    try:
+        from backend.modules.scanner import _scan_single_file
+
+        info = _scan_single_file(file_path)
+        if info and info.artist and info.title:
+            key = f"{info.artist.lower().strip()} - {info.title.lower().strip()}"
+            return file_path, key
+        return file_path, None
+    except Exception:
+        return file_path, None
+
+
+def _iter_chunks(values: List[str], size: int = 800):
+    for idx in range(0, len(values), size):
+        yield values[idx: idx + size]
+
+
+def _storage_profile(source: str, against: Optional[str]) -> str:
+    mode = DUPLICATES_STORAGE_MODE
+    if mode in {"ssd", "hdd", "network"}:
+        return mode
+
+    candidate_paths = [p for p in (source, against) if p]
+    if any(str(p).startswith("\\\\") for p in candidate_paths):
+        return "network"
+    return "ssd"
+
+
+def _resolve_workers(
+    total_items: int,
+    storage_profile: str,
+    configured: int,
+    cpu_multiplier: int,
+    hard_cap: int,
+) -> int:
+    if total_items <= 0:
+        return 1
+
+    if configured and configured > 0:
+        return max(1, min(configured, total_items, hard_cap))
+
+    if storage_profile == "network":
+        base = max(2, min(SCANNER_WORKERS, 8))
+    elif storage_profile == "hdd":
+        base = max(2, SCANNER_WORKERS)
+    else:
+        base = max(2, SCANNER_WORKERS * cpu_multiplier)
+
+    return max(1, min(base, total_items, hard_cap))
+
+
+def _metadata_name_key(file_path: str) -> str:
+    stem = Path(file_path).stem.lower()
+    stem = re.sub(r"\s*\(\d+\)\s*$", "", stem)
+    stem = re.sub(r"[^a-z0-9]+", "", stem)
+    return stem
+
+
+def _build_file_stats(file_paths: List[str]) -> Dict[str, Dict]:
+    stats: Dict[str, Dict] = {}
+    for fp in file_paths:
+        try:
+            file_stat = os.stat(fp)
+            stats[fp] = {
+                "size": int(file_stat.st_size),
+                "mtime": float(file_stat.st_mtime),
+            }
+        except OSError:
+            continue
+    return stats
+
+
 def find_duplicates(
     source: str,
     against: Optional[str] = None,
@@ -77,14 +175,11 @@ def find_duplicates(
     if total == 0:
         return _empty_result()
 
-    # Step 2: Group by file size (fast pre-filter)
+    # Step 2: Build file stats and group by file size (fast pre-filter)
+    file_stats = _build_file_stats(all_files)
     size_groups: Dict[int, List[str]] = defaultdict(list)
-    for fp in all_files:
-        try:
-            size = os.path.getsize(fp)
-            size_groups[size].append(fp)
-        except OSError:
-            pass
+    for fp, stat_info in file_stats.items():
+        size_groups[stat_info["size"]].append(fp)
 
     # Only hash files that share a size with at least one other file
     candidates = []
@@ -92,23 +187,134 @@ def find_duplicates(
         if len(files) > 1:
             candidates.extend(files)
 
-    # Step 3: Compute hashes (only for size-matched candidates)
+    # Step 3: Compute hashes (two-phase: quick hash then full hash)
     hash_map: Dict[str, List[str]] = defaultdict(list)
+    storage_profile = _storage_profile(source, against)
+    cache_hits_quick = 0
+    cache_hits_full = 0
+    cache_writes: List[Dict] = []
 
     if candidates:
-        # Use more workers for better parallelism (2x CPU count, capped at candidates)
-        workers = min(SCANNER_WORKERS * 2, len(candidates), 32)
-        done = 0
+        cache_by_path: Dict[str, Dict] = {}
+        with get_db() as conn:
+            for chunk in _iter_chunks(candidates):
+                cache_by_path.update(get_hash_cache_entries(conn, chunk))
 
-        with ProcessPoolExecutor(max_workers=workers) as executor:
-            # Larger chunksize for better throughput
-            chunksize = max(1, len(candidates) // (workers * 4))
-            for file_path, file_hash in executor.map(_compute_hash, candidates, chunksize=chunksize):
-                if not file_hash.startswith("error:"):
-                    hash_map[file_hash].append(file_path)
-                done += 1
-                if progress_callback and (done % 50 == 0 or done == len(candidates)):
-                    progress_callback(done, len(candidates))
+        # Phase 3a: quick hash to reduce full-file hashing workload
+        quick_hash_by_path: Dict[str, str] = {}
+        quick_tasks: List[Tuple[str, int]] = []
+        for fp in candidates:
+            info = file_stats.get(fp)
+            if not info:
+                continue
+
+            cached = cache_by_path.get(fp)
+            if (
+                cached
+                and int(cached.get("file_size", -1)) == info["size"]
+                and abs(float(cached.get("mtime", -1.0)) - info["mtime"]) < 1e-6
+                and cached.get("quick_hash")
+            ):
+                quick_hash_by_path[fp] = str(cached["quick_hash"])
+                cache_hits_quick += 1
+            else:
+                quick_tasks.append((fp, DUPLICATES_QUICK_HASH_BYTES))
+
+        if quick_tasks:
+            quick_workers = _resolve_workers(
+                total_items=len(quick_tasks),
+                storage_profile=storage_profile,
+                configured=DUPLICATES_HASH_WORKERS,
+                cpu_multiplier=2,
+                hard_cap=max(1, DUPLICATES_MAX_WORKERS_CAP),
+            )
+            quick_chunksize = max(1, len(quick_tasks) // (quick_workers * 4))
+            with ProcessPoolExecutor(max_workers=quick_workers) as executor:
+                for file_path, quick_hash in executor.map(_compute_quick_hash, quick_tasks, chunksize=quick_chunksize):
+                    if quick_hash.startswith("error:"):
+                        continue
+                    quick_hash_by_path[file_path] = quick_hash
+                    info = file_stats.get(file_path)
+                    if info:
+                        cache_writes.append({
+                            "file_path": file_path,
+                            "file_size": info["size"],
+                            "mtime": info["mtime"],
+                            "quick_hash": quick_hash,
+                            "full_hash": None,
+                        })
+
+        # Keep only groups with same size + same quick hash
+        quick_groups: Dict[Tuple[int, str], List[str]] = defaultdict(list)
+        for fp in candidates:
+            quick_hash = quick_hash_by_path.get(fp)
+            info = file_stats.get(fp)
+            if quick_hash and info:
+                quick_groups[(info["size"], quick_hash)].append(fp)
+
+        full_candidates: List[str] = []
+        for files in quick_groups.values():
+            if len(files) > 1:
+                full_candidates.extend(files)
+
+        done = 0
+        if full_candidates:
+            full_hash_by_path: Dict[str, str] = {}
+            full_tasks: List[str] = []
+
+            for fp in full_candidates:
+                info = file_stats.get(fp)
+                cached = cache_by_path.get(fp)
+                if (
+                    info
+                    and cached
+                    and int(cached.get("file_size", -1)) == info["size"]
+                    and abs(float(cached.get("mtime", -1.0)) - info["mtime"]) < 1e-6
+                    and cached.get("full_hash")
+                ):
+                    full_hash_by_path[fp] = str(cached["full_hash"])
+                    cache_hits_full += 1
+                else:
+                    full_tasks.append(fp)
+
+            if full_tasks:
+                full_workers = _resolve_workers(
+                    total_items=len(full_tasks),
+                    storage_profile=storage_profile,
+                    configured=DUPLICATES_HASH_WORKERS,
+                    cpu_multiplier=2,
+                    hard_cap=max(1, DUPLICATES_MAX_WORKERS_CAP),
+                )
+                full_chunksize = max(1, len(full_tasks) // (full_workers * 4))
+                with ProcessPoolExecutor(max_workers=full_workers) as executor:
+                    for file_path, file_hash in executor.map(_compute_hash, full_tasks, chunksize=full_chunksize):
+                        if file_hash.startswith("error:"):
+                            continue
+                        full_hash_by_path[file_path] = file_hash
+                        info = file_stats.get(file_path)
+                        if info:
+                            cache_writes.append({
+                                "file_path": file_path,
+                                "file_size": info["size"],
+                                "mtime": info["mtime"],
+                                "quick_hash": quick_hash_by_path.get(file_path),
+                                "full_hash": file_hash,
+                            })
+                        done += 1
+                        if progress_callback and (done % 50 == 0 or done == len(full_tasks)):
+                            progress_callback(done, len(full_tasks))
+
+            for fp in full_candidates:
+                file_hash = full_hash_by_path.get(fp)
+                if file_hash:
+                    hash_map[file_hash].append(fp)
+
+        if cache_writes:
+            dedup_cache_writes: Dict[str, Dict] = {}
+            for entry in cache_writes:
+                dedup_cache_writes[entry["file_path"]] = entry
+            with get_db() as conn:
+                upsert_hash_cache_entries(conn, list(dedup_cache_writes.values()))
 
     # Step 4: Filter to actual duplicates (hash groups with >1 file)
     # Sort files by priority: originals first, then copies (1), (2), etc.
@@ -137,15 +343,65 @@ def find_duplicates(
             total_hash_files += len(files)
 
     # Step 5: Metadata-based duplicates (artist + title)
+    # Narrow candidates before metadata parsing using filename and size heuristics.
     meta_groups: Dict[str, List[str]] = defaultdict(list)
     try:
-        from backend.modules.scanner import _scan_single_file
-
+        filename_groups: Dict[str, List[str]] = defaultdict(list)
         for fp in all_files:
-            info = _scan_single_file(fp)
-            if info.artist and info.title:
-                key = f"{info.artist.lower().strip()} - {info.title.lower().strip()}"
-                meta_groups[key].append(fp)
+            filename_groups[_metadata_name_key(fp)].append(fp)
+
+        metadata_candidates: Set[str] = set()
+        for files in filename_groups.values():
+            if len(files) > 1:
+                metadata_candidates.update(files)
+
+        # Include exact same-size groups to avoid missing differently named duplicates.
+        for files in size_groups.values():
+            if len(files) > 1:
+                metadata_candidates.update(files)
+
+        candidate_list = sorted(metadata_candidates) if metadata_candidates else list(all_files)
+        if not candidate_list:
+            candidate_list = list(all_files)
+
+        # Optional size narrowing inside metadata phase.
+        size_tolerance = max(0.0, DUPLICATES_METADATA_SIZE_TOLERANCE)
+        if size_tolerance > 0 and file_stats:
+            by_name_candidates: Dict[str, List[str]] = defaultdict(list)
+            for fp in candidate_list:
+                by_name_candidates[_metadata_name_key(fp)].append(fp)
+
+            narrowed_set: Set[str] = set()
+            for files in by_name_candidates.values():
+                if len(files) < 2:
+                    continue
+                sorted_files = sorted(files, key=lambda f: file_stats.get(f, {}).get("size", 0))
+                for idx, left_fp in enumerate(sorted_files):
+                    left_size = max(1, int(file_stats.get(left_fp, {}).get("size", 0)))
+                    for right_fp in sorted_files[idx + 1:]:
+                        right_size = max(1, int(file_stats.get(right_fp, {}).get("size", 0)))
+                        rel_diff = abs(left_size - right_size) / max(left_size, right_size)
+                        if rel_diff <= size_tolerance:
+                            narrowed_set.add(left_fp)
+                            narrowed_set.add(right_fp)
+
+            narrowed = sorted(narrowed_set)
+            if narrowed:
+                candidate_list = narrowed
+
+        metadata_workers = _resolve_workers(
+            total_items=len(candidate_list),
+            storage_profile=storage_profile,
+            configured=DUPLICATES_METADATA_WORKERS,
+            cpu_multiplier=1,
+            hard_cap=max(1, DUPLICATES_MAX_WORKERS_CAP),
+        )
+
+        metadata_chunksize = max(1, len(candidate_list) // max(1, metadata_workers * 4))
+        with ProcessPoolExecutor(max_workers=metadata_workers) as executor:
+            for file_path, key in executor.map(_extract_metadata_key, candidate_list, chunksize=metadata_chunksize):
+                if key:
+                    meta_groups[key].append(file_path)
     except Exception as e:
         logger.warning(f"Metadata duplicate scan failed: {e}")
 
@@ -178,6 +434,12 @@ def find_duplicates(
         "total_hash_files": total_hash_files,
         "total_meta_groups": len(metadata_duplicates),
         "total_meta_files": total_meta_files,
+        "performance": {
+            "storage_profile": storage_profile,
+            "hash_candidates": len(candidates),
+            "cache_hits_quick": cache_hits_quick,
+            "cache_hits_full": cache_hits_full,
+        },
         "hash_duplicates": hash_duplicates,
         "metadata_duplicates": metadata_duplicates,
     }

@@ -39,6 +39,17 @@ CREATE TABLE IF NOT EXISTS tracks (
 );
 """
 
+CREATE_DUPLICATE_HASH_CACHE_TABLE = """
+CREATE TABLE IF NOT EXISTS duplicate_hash_cache (
+    file_path TEXT PRIMARY KEY,
+    file_size INTEGER NOT NULL,
+    mtime REAL NOT NULL,
+    quick_hash TEXT,
+    full_hash TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 CREATE_DUPLICATE_SCANS_TABLE = """
 CREATE TABLE IF NOT EXISTS duplicate_scans (
     id TEXT PRIMARY KEY,
@@ -60,6 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_tracks_hash ON tracks(file_hash);
 CREATE INDEX IF NOT EXISTS idx_tracks_source ON tracks(source_folder);
 CREATE INDEX IF NOT EXISTS idx_tracks_dest ON tracks(dest_folder);
 CREATE INDEX IF NOT EXISTS idx_duplicate_scans_created ON duplicate_scans(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_duplicate_hash_cache_updated ON duplicate_hash_cache(updated_at DESC);
 """
 
 
@@ -70,6 +82,7 @@ def init_db(db_path: Optional[Path] = None) -> None:
     with sqlite3.connect(str(path)) as conn:
         conn.executescript(CREATE_TRACKS_TABLE)
         conn.executescript(CREATE_DUPLICATE_SCANS_TABLE)
+        conn.executescript(CREATE_DUPLICATE_HASH_CACHE_TABLE)
         conn.executescript(CREATE_INDEXES)
     logger.info(f"Database initialized at {path}")
 
@@ -240,3 +253,43 @@ def delete_duplicate_scan(conn: sqlite3.Connection, scan_id: str) -> bool:
     """Delete a duplicate scan from the database."""
     cursor = conn.execute("DELETE FROM duplicate_scans WHERE id = ?", (scan_id,))
     return cursor.rowcount > 0
+
+
+def get_hash_cache_entries(conn: sqlite3.Connection, file_paths: List[str]) -> Dict[str, Dict]:
+    """Get cached hash fingerprints for a batch of file paths."""
+    if not file_paths:
+        return {}
+
+    conn.execute(CREATE_DUPLICATE_HASH_CACHE_TABLE)
+
+    placeholders = ",".join("?" for _ in file_paths)
+    rows = conn.execute(
+        f"""SELECT file_path, file_size, mtime, quick_hash, full_hash, updated_at
+            FROM duplicate_hash_cache
+            WHERE file_path IN ({placeholders})""",
+        file_paths,
+    ).fetchall()
+    return {row["file_path"]: dict(row) for row in rows}
+
+
+def upsert_hash_cache_entries(conn: sqlite3.Connection, entries: List[Dict]) -> int:
+    """Insert or update duplicate hash cache entries."""
+    if not entries:
+        return 0
+
+    conn.execute(CREATE_DUPLICATE_HASH_CACHE_TABLE)
+
+    conn.executemany(
+        """
+        INSERT INTO duplicate_hash_cache (file_path, file_size, mtime, quick_hash, full_hash)
+        VALUES (:file_path, :file_size, :mtime, :quick_hash, :full_hash)
+        ON CONFLICT(file_path) DO UPDATE SET
+            file_size=excluded.file_size,
+            mtime=excluded.mtime,
+            quick_hash=excluded.quick_hash,
+            full_hash=excluded.full_hash,
+            updated_at=CURRENT_TIMESTAMP
+        """,
+        entries,
+    )
+    return len(entries)

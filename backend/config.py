@@ -43,6 +43,12 @@ UNCLASSIFIED_FOLDER = "__REVISAR"
 
 # ── Duplicates ─────────────────────────────────────────────────────────────────
 HASH_CHUNK_SIZE = 65536  # 64 KB
+DUPLICATES_QUICK_HASH_BYTES = int(os.getenv("DUPLICATES_QUICK_HASH_BYTES", str(2 * 1024 * 1024)))
+DUPLICATES_HASH_WORKERS = int(os.getenv("DUPLICATES_HASH_WORKERS", "0"))  # 0 = auto
+DUPLICATES_METADATA_WORKERS = int(os.getenv("DUPLICATES_METADATA_WORKERS", "0"))  # 0 = auto
+DUPLICATES_MAX_WORKERS_CAP = int(os.getenv("DUPLICATES_MAX_WORKERS_CAP", "32"))
+DUPLICATES_STORAGE_MODE = os.getenv("DUPLICATES_STORAGE_MODE", "auto").strip().lower()  # auto|ssd|hdd|network
+DUPLICATES_METADATA_SIZE_TOLERANCE = float(os.getenv("DUPLICATES_METADATA_SIZE_TOLERANCE", "0.03"))
 
 # ── AI: Embeddings ─────────────────────────────────────────────────────────────
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"

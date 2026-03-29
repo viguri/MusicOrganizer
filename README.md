@@ -39,8 +39,38 @@ Open http://localhost:5173
 - **Scan & Classify** — Scan directories, analyze genres, propose ~50 folder structure
 - **Organize** — Dry-run planning, execute moves, rollback support
 - **Name Cleaner** — Remove URL spam, numeric prefixes from filenames
-- **Duplicates** — SHA-256 hash + metadata duplicate detection
+- **Duplicates** — Size prefilter + quick hash + full hash + metadata duplicate detection (with cache)
 - **Settings** — Configure paths, edit folder/label mappings
+
+## Duplicate Scan Performance Tuning
+
+The duplicate scanner supports a staged pipeline and persistent hash cache to speed up repeated scans:
+
+1. Group by file size
+2. Quick hash (first N bytes)
+3. Full SHA-256 only for quick-hash collisions
+4. Reuse cached hashes for unchanged files (size + mtime)
+5. Metadata matching on narrowed candidate files
+
+Optional environment variables:
+
+```bash
+# Bytes used for quick hash stage (default: 2097152 = 2 MB)
+DUPLICATES_QUICK_HASH_BYTES=2097152
+
+# Worker overrides (0 = auto)
+DUPLICATES_HASH_WORKERS=0
+DUPLICATES_METADATA_WORKERS=0
+
+# Hard worker cap (default: 32)
+DUPLICATES_MAX_WORKERS_CAP=32
+
+# auto | ssd | hdd | network
+DUPLICATES_STORAGE_MODE=auto
+
+# Metadata candidate size tolerance ratio (default: 0.03)
+DUPLICATES_METADATA_SIZE_TOLERANCE=0.03
+```
 
 ## Hierarchization Modes (Analyze Genres)
 
